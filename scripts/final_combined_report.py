@@ -24,6 +24,10 @@ from openpyxl.drawing.image import Image as XLImage
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
 
+# Import LLM service for consistent error categorization
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from llm_service import llm_service
+
 class FinalPolishedCombinedReport:
     """Final combined report generator with pure regex parsing and professional styling"""
     
@@ -58,7 +62,7 @@ class FinalPolishedCombinedReport:
                     charts = {}
                     chart_files = [
                         'dau_chart.png', 'dauu_chart.png', 'mode_wise_dau_chart.png', 'response_time_percentiles.png',
-                        'response_time_analysis.png', 'daily_response_time_range.png'
+                        'response_time_analysis.png', 'daily_response_time_range.png', 'error_categories_chart.png'
                     ]
                     for chart in chart_files:
                         chart_path = os.path.join(file_path, chart)
@@ -74,62 +78,148 @@ class FinalPolishedCombinedReport:
         with open(metrics_file, 'r', encoding='utf-8') as f:
             content = f.read()
         metrics = {}
-        # Capture service display name if emitted by analyzer
-        m = re.search(r'^SERVICE NAME:\s*(.+)$', content, re.MULTILINE)
-        if m:
-            metrics['__service_display__'] = m.group(1).strip()
-        # Response Time Metrics
-        rt_avg = re.search(r'Avg Time Taken\s+([0-9.]+)\s*s', content)
-        if rt_avg:
-            metrics['response_time'] = {
-                'avg': float(rt_avg.group(1)),
-                'min': float(re.search(r'Min Time Taken\s+([0-9.]+)\s*s', content).group(1)),
-                'max': float(re.search(r'Max Time Taken\s+([0-9.]+)\s*s', content).group(1)),
-                'median': float(re.search(r'Median Time\s+([0-9.]+)\s*s', content).group(1)),
-                'std': float(re.search(r'Std Deviation\s+([0-9.]+)\s*s', content).group(1)),
-                'count': int(re.search(r'Records Analyzed\s+([0-9,]+)', content).group(1).replace(',', ''))
-            }
-        # LLM Cost Metrics
-        cost_avg = re.search(r'Avg LLM Cost\s+\$([0-9.]+)', content)
-        if cost_avg:
-            metrics['llm_cost'] = {
-                'avg': float(cost_avg.group(1)),
-                'min': float(re.search(r'Min LLM Cost\s+\$([0-9.]+)', content).group(1)),
-                'max': float(re.search(r'Max LLM Cost\s+\$([0-9.]+)', content).group(1)),
-                'median': float(re.search(r'Median Cost\s+\$([0-9.]+)', content).group(1)),
-                'total': float(re.search(r'Total LLM Cost\s+\$([0-9.]+)', content).group(1)),
-                'count': int(re.search(r'Records with Cost\s+([0-9,]+)', content).group(1).replace(',', ''))
-            }
-        # Status Metrics
-        error_match = re.search(r'error \(Failure\)\s+([\d,]+)\s+([0-9.]+)%', content)
-        if error_match:
-            metrics['status'] = {
-                'total': int(re.search(r'Total\s+([\d,]+)\s+100\.00%', content).group(1).replace(',', '')),
-                'success_count': int(re.search(r'info \(Success\)\s+([\d,]+)', content).group(1).replace(',', '')),
-                'success_rate': float(re.search(r'info \(Success\)\s+[\d,]+\s+([0-9.]+)%', content).group(1)),
-                'error_count': int(error_match.group(1).replace(',', '')),
-                'error_rate': float(error_match.group(2))
-            }
-        # Error Categories Parsing
-        error_categories = {}
-        cat_pattern = r'ERROR TYPE CATEGORIES\n=+\n.*?\n-+\n(.*?)\n\nTotal error categories:'
-        cat_match = re.search(cat_pattern, content, re.DOTALL)
-        if cat_match:
-            for line in cat_match.group(1).strip().split('\n'):
-                parts = line.strip().rsplit(None, 1)
-                if len(parts) == 2 and parts[1].isdigit():
-                    error_categories[parts[0].strip()] = int(parts[1])
-        metrics['error_categories'] = error_categories
-        # Error Messages Parsing
+        
+        try:
+            # Capture service display name if emitted by analyzer
+            m = re.search(r'^SERVICE NAME:\s*(.+)$', content, re.MULTILINE)
+            if m:
+                metrics['__service_display__'] = m.group(1).strip()
+            
+            # Response Time Metrics - with better error handling
+            rt_avg = re.search(r'Avg Time Taken \(s\)\s+([0-9.]+)', content)
+            if rt_avg:
+                try:
+                    metrics['response_time'] = {
+                        'avg': float(rt_avg.group(1)),
+                        'min': float(re.search(r'Min Time Taken \(s\)\s+([0-9.]+)', content).group(1)),
+                        'max': float(re.search(r'Max Time Taken \(s\)\s+([0-9.]+)', content).group(1)),
+                        'median': float(re.search(r'Median Time \(s\)\s+([0-9.]+)', content).group(1)),
+                        'std': float(re.search(r'Std Deviation \(s\)\s+([0-9.]+)', content).group(1)),
+                        'count': int(re.search(r'Records Analyzed\s+([0-9,]+)', content).group(1).replace(',', ''))
+                    }
+                except (AttributeError, ValueError) as e:
+                    print(f"⚠️ Error parsing response time metrics: {e}")
+            else:
+                print(f"⚠️ No response time metrics found in {metrics_file}")
+            
+            # LLM Cost Metrics - with better error handling
+            cost_avg = re.search(r'Avg LLM Cost \(\$\)\s+([0-9.]+)', content)
+            if cost_avg:
+                try:
+                    metrics['llm_cost'] = {
+                        'avg': float(cost_avg.group(1)),
+                        'min': float(re.search(r'Min LLM Cost \(\$\)\s+([0-9.]+)', content).group(1)),
+                        'max': float(re.search(r'Max LLM Cost \(\$\)\s+([0-9.]+)', content).group(1)),
+                        'median': float(re.search(r'Median Cost \(\$\)\s+([0-9.]+)', content).group(1)),
+                        'total': float(re.search(r'Total LLM Cost \(\$\)\s+([0-9.]+)', content).group(1)),
+                        'count': int(re.search(r'Records with Cost\s+([0-9,]+)', content).group(1).replace(',', ''))
+                    }
+                except (AttributeError, ValueError) as e:
+                    print(f"⚠️ Error parsing LLM cost metrics: {e}")
+            else:
+                print(f"⚠️ No LLM cost metrics found in {metrics_file}")
+            
+            # Status Metrics - with better error handling
+            error_match = re.search(r'error \(Failure\)\s+([\d,]+)\s+([0-9.]+)%', content)
+            if error_match:
+                try:
+                    total_match = re.search(r'Total\s+([\d,]+)\s+100\.00%', content)
+                    success_match = re.search(r'info \(Success\)\s+([\d,]+)', content)
+                    success_rate_match = re.search(r'info \(Success\)\s+[\d,]+\s+([0-9.]+)%', content)
+                    
+                    if total_match and success_match and success_rate_match:
+                        metrics['status'] = {
+                            'total': int(total_match.group(1).replace(',', '')),
+                            'success_count': int(success_match.group(1).replace(',', '')),
+                            'success_rate': float(success_rate_match.group(1)),
+                            'error_count': int(error_match.group(1).replace(',', '')),
+                            'error_rate': float(error_match.group(2))
+                        }
+                except (AttributeError, ValueError) as e:
+                    print(f"⚠️ Error parsing status metrics: {e}")
+        except Exception as e:
+            print(f"❌ Error parsing basic metrics from {metrics_file}: {e}")
+            return metrics
+        # ERROR MESSAGE TO CATEGORY MAPPING Parsing (Primary source for messages and categories)
+        error_message_categories = {}
+        try:
+            mapping_pattern = r'ERROR MESSAGE TO CATEGORY MAPPING\n=+\n(.*?)\n\nERROR TYPE CATEGORIES'
+            mapping_match = re.search(mapping_pattern, content, re.DOTALL)
+            if mapping_match:
+                for line in mapping_match.group(1).strip().split('\n'):
+                    if '|=>|' in line:
+                        parts = line.split('|=>|', 1)
+                        if len(parts) == 2:
+                            category = parts[0].strip()
+                            message = parts[1].strip()
+                            error_message_categories[message] = category
+        except Exception as e:
+            print(f"⚠️ Error parsing error message categories: {e}")
+        metrics['error_message_categories'] = error_message_categories
+        
+        # DETAILED ERROR BREAKDOWN Parsing (Get counts for messages)
         error_messages = {}
-        msg_pattern = r'DETAILED ERROR BREAKDOWN\n=+\n.*?\n-+\n(.*?)\n\nTotal unique error'
-        msg_match = re.search(msg_pattern, content, re.DOTALL)
-        if msg_match:
-            for line in msg_match.group(1).strip().split('\n'):
-                parts = line.strip().rsplit(None, 1)
-                if len(parts) == 2 and parts[1].isdigit():
-                    error_messages[parts[0].strip()] = int(parts[1])
+        full_error_messages = {}  # Store full messages for detailed sheet
+        try:
+            msg_pattern = r'DETAILED ERROR BREAKDOWN\n=+\nError Message.*?\n-+\n(.*?)\n\nTotal unique error'
+            msg_match = re.search(msg_pattern, content, re.DOTALL)
+            if msg_match:
+                for line in msg_match.group(1).strip().split('\n'):
+                    if line.strip():
+                        # Split by last occurrence of multiple spaces to separate message from count
+                        parts = re.split(r'\s{2,}', line.strip())
+                        if len(parts) >= 2 and parts[-1].isdigit():
+                            truncated_message = ' '.join(parts[:-1]).strip()
+                            count = int(parts[-1])
+                            
+                            # Find the full message that matches this truncated one
+                            full_message = None
+                            for full_msg in error_message_categories.keys():
+                                if full_msg.startswith(truncated_message) or truncated_message.startswith(full_msg[:50]):
+                                    full_message = full_msg
+                                    break
+                            
+                            if full_message:
+                                # Aggregate counts for identical messages
+                                if full_message in error_messages:
+                                    error_messages[full_message] += count
+                                    full_error_messages[full_message] += count
+                                else:
+                                    error_messages[full_message] = count
+                                    full_error_messages[full_message] = count
+                            else:
+                                # If no match found, use truncated message and aggregate
+                                if truncated_message in error_messages:
+                                    error_messages[truncated_message] += count
+                                    full_error_messages[truncated_message] += count
+                                else:
+                                    error_messages[truncated_message] = count
+                                    full_error_messages[truncated_message] = count
+        except Exception as e:
+            print(f"⚠️ Error parsing detailed error breakdown: {e}")
         metrics['error_messages'] = error_messages
+        metrics['full_error_messages'] = full_error_messages  # Store full messages
+        
+        # ERROR TYPE CATEGORIES Parsing (Category Counts)
+        error_categories = {}
+        try:
+            cat_pattern = r'ERROR TYPE CATEGORIES\n=+\nError Category.*?\n-+\n(.*?)\n\nTotal error categories:'
+            cat_match = re.search(cat_pattern, content, re.DOTALL)
+            if cat_match:
+                for line in cat_match.group(1).strip().split('\n'):
+                    if line.strip():
+                        # Split by multiple spaces to separate category from count
+                        parts = re.split(r'\s{2,}', line.strip())
+                        if len(parts) >= 2 and parts[-1].isdigit():
+                            category = ' '.join(parts[:-1]).strip()
+                            count = int(parts[-1])
+                            error_categories[category] = count
+        except Exception as e:
+            print(f"⚠️ Error parsing error type categories: {e}")
+        metrics['error_categories'] = error_categories
+        
+        # VALIDATION: Cross-check counts and fix discrepancies
+        self._validate_and_fix_error_counts(metrics)
 
         # --- Additional tables: Mode-wise and Process/Mode-wise ---
         def _extract_block(title_regex: str) -> List[str]:
@@ -166,87 +256,119 @@ class FinalPolishedCombinedReport:
             return None
 
         # RESPONSE TIME BY EFFECTIVE MODE (allow optional dashed header line)
-        rt_mode_lines = _extract_block(r'RESPONSE TIME BY EFFECTIVE MODE\n=+\n(?:.*?\n-+\n)?(.*?)\n\n')
-        if rt_mode_lines:
-            rows = []
-            for ln in rt_mode_lines:
-                cols = _split_cols(ln)
-                mn = _extract_mode_and_name(cols)
-                if not mn:
-                    continue
-                mode, mode_name, offset = mn
-                # Expect next columns: avg, p50, min, max, std, count
-                if len(cols) >= offset + 6:
-                    rows.append({
-                        'effective_mode': mode,
-                        'mode_name': mode_name,
-                        'avg': float(cols[offset + 0]),
-                        'p50': float(cols[offset + 1]),
-                        'min': float(cols[offset + 2]),
-                        'max': float(cols[offset + 3]),
-                        'std': float(cols[offset + 4]),
-                        'count': int(cols[offset + 5])
-                    })
-            metrics['rt_by_mode'] = rows
+        try:
+            rt_mode_lines = _extract_block(r'RESPONSE TIME BY EFFECTIVE MODE\n=+\n(?:.*?\n-+\n)?(.*?)\n\n')
+            if rt_mode_lines:
+                rows = []
+                for ln in rt_mode_lines:
+                    cols = _split_cols(ln)
+                    mn = _extract_mode_and_name(cols)
+                    if not mn:
+                        continue
+                    mode, mode_name, offset = mn
+                    # Expect next columns: avg, p50, min, max, std, count
+                    if len(cols) >= offset + 6:
+                        try:
+                            rows.append({
+                                'effective_mode': mode,
+                                'mode_name': mode_name,
+                                'avg': float(cols[offset + 0]),
+                                'p50': float(cols[offset + 1]),
+                                'min': float(cols[offset + 2]),
+                                'max': float(cols[offset + 3]),
+                                'std': float(cols[offset + 4]),
+                                'count': int(cols[offset + 5])
+                            })
+                        except (ValueError, IndexError) as e:
+                            print(f"⚠️ Error parsing mode response time row: {e}")
+                            continue
+                if rows:
+                    metrics['rt_by_mode'] = rows
+        except Exception as e:
+            print(f"⚠️ Error parsing response time by mode: {e}")
 
         # LLM COST BY EFFECTIVE MODE (allow optional dashed header line)
-        cost_mode_lines = _extract_block(r'LLM COST BY EFFECTIVE MODE\n=+\n(?:.*?\n-+\n)?(.*?)\n\n')
-        if cost_mode_lines:
-            rows = []
-            for ln in cost_mode_lines:
-                cols = _split_cols(ln)
-                mn = _extract_mode_and_name(cols)
-                if not mn:
-                    continue
-                mode, mode_name, offset = mn
-                # Expect next columns: avg, median, min, max, total, count
-                if len(cols) >= offset + 6:
-                    rows.append({
-                        'effective_mode': mode,
-                        'mode_name': mode_name,
-                        'avg': float(cols[offset + 0]),
-                        'median': float(cols[offset + 1]),
-                        'min': float(cols[offset + 2]),
-                        'max': float(cols[offset + 3]),
-                        'total': float(cols[offset + 4]),
-                        'count': int(cols[offset + 5])
-                    })
-            metrics['cost_by_mode'] = rows
+        try:
+            cost_mode_lines = _extract_block(r'LLM COST BY EFFECTIVE MODE\n=+\n(?:.*?\n-+\n)?(.*?)\n\n')
+            if cost_mode_lines:
+                rows = []
+                for ln in cost_mode_lines:
+                    cols = _split_cols(ln)
+                    mn = _extract_mode_and_name(cols)
+                    if not mn:
+                        continue
+                    mode, mode_name, offset = mn
+                    # Expect next columns: avg, median, min, max, total, count
+                    if len(cols) >= offset + 6:
+                        try:
+                            rows.append({
+                                'effective_mode': mode,
+                                'mode_name': mode_name,
+                                'avg': float(cols[offset + 0]),
+                                'median': float(cols[offset + 1]),
+                                'min': float(cols[offset + 2]),
+                                'max': float(cols[offset + 3]),
+                                'total': float(cols[offset + 4]),
+                                'count': int(cols[offset + 5])
+                            })
+                        except (ValueError, IndexError) as e:
+                            print(f"⚠️ Error parsing mode cost row: {e}")
+                            continue
+                if rows:
+                    metrics['cost_by_mode'] = rows
+        except Exception as e:
+            print(f"⚠️ Error parsing LLM cost by mode: {e}")
 
         # FAILURE RATE (ERROR COUNTS) BY MODE
-        fail_mode_lines = _extract_block(r'FAILURE RATE \(ERROR COUNTS\) BY MODE\n=+\n(.*?)\n\n')
-        if fail_mode_lines:
-            rows = []
-            for ln in fail_mode_lines:
-                cols = _split_cols(ln)
-                if len(cols) >= 6 and cols[0].strip().lstrip('-').isdigit():
-                    rows.append({
-                        'effective_mode': int(cols[0]),
-                        'mode_name': cols[1],
-                        'error': int(cols[2]),
-                        'info': int(cols[3]),
-                        'total': int(cols[4]),
-                        'failure_pct': float(cols[5].replace('%',''))
-                    })
-            metrics['fail_by_mode'] = rows
+        try:
+            fail_mode_lines = _extract_block(r'FAILURE RATE \(ERROR COUNTS\) BY MODE\n=+\n(.*?)\n\n')
+            if fail_mode_lines:
+                rows = []
+                for ln in fail_mode_lines:
+                    cols = _split_cols(ln)
+                    if len(cols) >= 6 and cols[0].strip().lstrip('-').isdigit():
+                        try:
+                            rows.append({
+                                'effective_mode': int(cols[0]),
+                                'mode_name': cols[1],
+                                'error': int(cols[2]),
+                                'info': int(cols[3]),
+                                'total': int(cols[4]),
+                                'failure_pct': float(cols[5].replace('%',''))
+                            })
+                        except (ValueError, IndexError) as e:
+                            print(f"⚠️ Error parsing mode failure row: {e}")
+                            continue
+                if rows:
+                    metrics['fail_by_mode'] = rows
+        except Exception as e:
+            print(f"⚠️ Error parsing failure rate by mode: {e}")
 
         # RESPONSE TIME BY PROCESS
-        rt_proc_lines = _extract_block(r'RESPONSE TIME BY PROCESS\n=+\n.*?\n-+\n(.*?)\n\n')
-        if rt_proc_lines:
-            rows = []
-            for ln in rt_proc_lines:
-                cols = _split_cols(ln)
-                if len(cols) >= 7:
-                    rows.append({
-                        'process_name': cols[0],
-                        'avg': float(cols[1]),
-                        'p50': float(cols[2]),
-                        'min': float(cols[3]),
-                        'max': float(cols[4]),
-                        'std': float(cols[5]),
-                        'count': int(cols[6])
-                    })
-            metrics['rt_by_process'] = rows
+        try:
+            rt_proc_lines = _extract_block(r'RESPONSE TIME BY PROCESS\n=+\n.*?\n-+\n(.*?)\n\n')
+            if rt_proc_lines:
+                rows = []
+                for ln in rt_proc_lines:
+                    cols = _split_cols(ln)
+                    if len(cols) >= 7:
+                        try:
+                            rows.append({
+                                'process_name': cols[0],
+                                'avg': float(cols[1]),
+                                'p50': float(cols[2]),
+                                'min': float(cols[3]),
+                                'max': float(cols[4]),
+                                'std': float(cols[5]),
+                                'count': int(cols[6])
+                            })
+                        except (ValueError, IndexError) as e:
+                            print(f"⚠️ Error parsing process response time row: {e}")
+                            continue
+                if rows:
+                    metrics['rt_by_process'] = rows
+        except Exception as e:
+            print(f"⚠️ Error parsing response time by process: {e}")
 
         # LLM COST BY PROCESS
         cost_proc_lines = _extract_block(r'LLM COST BY PROCESS\n=+\n.*?\n-+\n(.*?)\n\n')
@@ -339,19 +461,62 @@ class FinalPolishedCombinedReport:
             metrics['fail_by_process_mode'] = rows
         return metrics
     
+    def _validate_and_fix_error_counts(self, metrics: Dict):
+        """Validate and fix error count discrepancies between categories and messages."""
+        error_categories = metrics.get('error_categories', {})
+        error_messages = metrics.get('error_messages', {})
+        message_categories = metrics.get('error_message_categories', {})
+        
+        # Calculate totals
+        category_total = sum(error_categories.values())
+        message_total = sum(error_messages.values())
+        
+        print(f"🔍 Validation: Category total={category_total}, Message total={message_total}")
+        
+        if category_total != message_total:
+            print(f"⚠️ Count discrepancy detected: {abs(category_total - message_total)} errors")
+            
+            # Try to fix by recalculating category counts from messages
+            recalculated_categories = {}
+            for message, count in error_messages.items():
+                category = message_categories.get(message, 'Uncategorized')
+                recalculated_categories[category] = recalculated_categories.get(category, 0) + count
+            
+            # Update metrics with recalculated counts
+            metrics['error_categories'] = recalculated_categories
+            new_category_total = sum(recalculated_categories.values())
+            print(f"✅ Fixed: New category total={new_category_total}, Message total={message_total}")
+            
+            # Add validation metadata
+            metrics['validation'] = {
+                'original_category_total': category_total,
+                'message_total': message_total,
+                'discrepancy': abs(category_total - message_total),
+                'fixed': True,
+                'recalculated_category_total': new_category_total
+            }
+        else:
+            print("✅ Error counts are consistent")
+            metrics['validation'] = {
+                'original_category_total': category_total,
+                'message_total': message_total,
+                'discrepancy': 0,
+                'fixed': False
+            }
+    
     def generate_excel_report(self, all_data: Dict) -> bool:
         """Generate a complete and correctly formatted Excel report."""
         try:
             today = datetime.now().strftime('%Y%m%d_%H%M')
             excel_path = f"{self.reports_dir}/analysis_report_{today}.xlsx"
             with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                self._create_summary_sheet(writer, all_data)
                 self._create_response_time_sheet(writer, all_data)
                 self._create_success_rate_sheet_restructured(writer, all_data)
                 self._create_llm_cost_sheet(writer, all_data)
+                # Error Categories table
                 self._create_error_categories_sheet(writer, all_data)
-                # New: Category → Message mapping for each service
-                self._create_error_category_messages_sheet(writer, all_data)
+                # Add detailed error messages sheet with full text
+                self._create_detailed_error_messages_sheet(writer, all_data)
                 self._create_charts_sheet(writer, all_data)
                 # Per-service consolidated sheets
                 self._create_service_sheets(writer, all_data)
@@ -364,70 +529,50 @@ class FinalPolishedCombinedReport:
             traceback.print_exc()
             return False
     
-    def _create_summary_sheet(self, writer, all_data: Dict):
-        summary_data = [
-            ['DataDog Analysis Summary', ''],
-            ['Generated', datetime.now()],
-            ['Files Analyzed', len(all_data)],
-            ['', '']
-        ]
-        for file_name, data in all_data.items():
-            metrics = data['metrics']
-            summary_data.extend([
-                [f'{file_name}', ''],
-                ['Total Records', metrics.get('status', {}).get('total', 0)],
-                # Write success rate as numeric fraction; format later as %
-                ['Success Rate', metrics.get('status', {}).get('success_rate', 0) / 100.0],
-                ['Error Count', metrics.get('status', {}).get('error_count', 0)],
-                # Write response time as numeric seconds; format later with " s"
-                ['Avg Response Time', metrics.get('response_time', {}).get('avg', 0)],
-                ['', '']
-            ])
-        df = pd.DataFrame(summary_data, columns=['Metric', 'Value'])
-        df.to_excel(writer, sheet_name='Overview', index=False)
-        # Align headers left and numeric values right; apply number formats
-        ws = writer.sheets['Overview']
-        # Header row alignment
-        for cell in ws[1]:
-            cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
-        # Iterate rows to set right alignment for numeric values and formats
-        for row in ws.iter_rows(min_row=2, min_col=1, max_col=2):
-            metric_cell, value_cell = row
-            # Right-align numeric values
-            if value_cell.data_type == 'n':
-                value_cell.alignment = Alignment(horizontal='right')
-            # Apply number formats for specific metrics
-            if metric_cell.value == 'Success Rate' and value_cell.data_type == 'n':
-                value_cell.number_format = '0.00%'
-            if metric_cell.value == 'Avg Response Time' and value_cell.data_type == 'n':
-                value_cell.number_format = '0.00" s"'
     
     def _create_response_time_sheet(self, writer, all_data: Dict):
+        """Create a comprehensive response time metrics table for all services"""
         rt_data = []
         for file_name, data in all_data.items():
             rt = data['metrics'].get('response_time')
             if rt:
-                # --- MODIFIED: Removed the 'count' column ---
                 rt_data.append([
-                    file_name, rt.get('avg', 0), rt.get('min', 0), rt.get('max', 0),
-                    rt.get('median', 0), rt.get('std', 0)
+                    file_name, 
+                    rt.get('avg', 0), 
+                    rt.get('min', 0), 
+                    rt.get('max', 0),
+                    rt.get('median', 0), 
+                    rt.get('std', 0),
+                    rt.get('count', 0)  # Include count for completeness
                 ])
+        
         if rt_data:
             df = pd.DataFrame(rt_data, columns=[
-                'File', 'Avg Time (s)', 'Min Time (s)', 'Max Time (s)', 
-                'Median Time (s)', 'Std Dev (s)'
+                'Service', 'Avg Time', 'Min Time', 'Max Time', 
+                'Median Time', 'Std Dev', 'Records Analyzed'
             ])
             df.to_excel(writer, sheet_name='Response Times', index=False)
             ws = writer.sheets['Response Times']
-            # Header alignment left
+            
+            # Header formatting
             for cell in ws[1]:
-                cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
-            # Right-align numeric columns (B to F) and set numeric format with seconds
-            for row in ws.iter_rows(min_row=2, min_col=2, max_col=6):
+                cell.alignment = Alignment(horizontal='left')
+                cell.font = Font(bold=True)
+            
+            # Right-align numeric columns and format
+            for row in ws.iter_rows(min_row=2, min_col=2, max_col=7):
                 for cell in row:
                     if cell.data_type == 'n':
                         cell.alignment = Alignment(horizontal='right')
-                        cell.number_format = '0.00" s"'
+                        if cell.column <= 6:  # Time columns
+                            cell.number_format = '0.00'  # Remove "s" unit
+                        else:  # Count column
+                            cell.number_format = '#,##0'
+        else:
+            # Create empty sheet if no data
+            pd.DataFrame(columns=['Service', 'Avg Time', 'Min Time', 'Max Time', 
+                                'Median Time', 'Std Dev', 'Records Analyzed']).to_excel(
+                writer, sheet_name='Response Times', index=False)
     
     def _create_success_rate_sheet_restructured(self, writer, all_data: Dict):
         """Creates a success rate sheet with true number formatting for percentages."""
@@ -477,19 +622,19 @@ class FinalPolishedCombinedReport:
                 ])
         if cost_data:
             df = pd.DataFrame(cost_data, columns=[
-                'File', 'Avg Cost ($)', 'Min Cost ($)', 'Max Cost ($)', 
-                'Median Cost ($)', 'Total Cost ($)'
+                'File', 'Avg Cost', 'Min Cost', 'Max Cost', 
+                'Median Cost', 'Total Cost'
             ])
             df.to_excel(writer, sheet_name='LLM Costs', index=False)
             ws = writer.sheets['LLM Costs']
             for cell in ws[1]:
                 cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
-            # Right-align numeric columns and apply currency format
+            # Right-align numeric columns and apply number format without currency symbol
             for row in ws.iter_rows(min_row=2, min_col=2, max_col=6):
                 for cell in row:
                     if cell.data_type == 'n':
                         cell.alignment = Alignment(horizontal='right')
-                        cell.number_format = '"$"#,##0.0000'
+                        cell.number_format = '#,##0.0000'
     
     def _create_error_categories_sheet(self, writer, all_data: Dict):
         """Creates a structured sheet for error categories, grouped by file."""
@@ -550,66 +695,65 @@ class FinalPolishedCombinedReport:
 
     # --- New helpers for Category→Message mapping ---
     def _categorize_error_message(self, message: str) -> str:
-        s = str(message).lower()
-        if ('timeout' in s) or ('timed out' in s) or ('time out' in s):
-            return 'Timeout Errors'
-        if ('connection' in s) or ('connect' in s) or ('network' in s) or ('socket' in s):
-            return 'Network/Connection Errors'
-        if ('auth' in s) or ('permission' in s) or ('unauthorized' in s) or ('forbidden' in s):
-            return 'Authentication/Authorization Errors'
-        if ('not found' in s) or ('404' in s) or ('missing' in s) or ('no results' in s) or ('contains no results' in s):
-            return 'Resource Not Found Errors'
-        if ('invalid data payload' in s) or ('validation' in s) or ('invalid' in s) or ('bad request' in s) or ('payload' in s):
-            return 'Data Validation/Payload Errors'
-        if ('internal server error' in s) or ('server error' in s) or ('500' in s):
-            return 'Internal Server Errors'
-        if ('litellm' in s) or ('llm' in s) or ('summarize_document' in s):
-            return 'LLM Service Errors'
-        if ('query' in s) or ('params' in s) or ('parameter' in s) or ('filtertype' in s):
-            return 'Query/Parameter Errors'
-        if ('exception' in s) or ('baseexception' in s):
-            return 'Application Exception Errors'
-        if ('model mapping' in s) or ('fetch' in s):
-            return 'Service Configuration Errors'
-        if ('json' in s) or ('parse' in s) or ('format' in s):
-            return 'Data Format Errors'
-        return 'Other/Uncategorized Errors'
+        """Use the LLM service for consistent error categorization"""
+        try:
+            return llm_service.categorize_error(message)
+        except Exception as e:
+            print(f"⚠️ Error categorization failed for message: {e}")
+            return 'Other/Uncategorized Errors'
 
-    def _create_error_category_messages_sheet(self, writer, all_data: Dict):
-        """Create a sheet mapping error categories to their messages per service."""
+
+    def _create_detailed_error_messages_sheet(self, writer, all_data: Dict):
+        """Create a detailed sheet with full error messages (not truncated)."""
         start_row = 0
         wb = writer.book
-        sheet_name = 'Category Messages'
+        sheet_name = 'Detailed Error Messages'
         ws = wb.create_sheet(sheet_name)
         writer.sheets[sheet_name] = ws
         has_any = False
+        
         for file_name, data in all_data.items():
-            msgs = data['metrics'].get('error_messages', {})
-            if not msgs:
+            full_msgs = data['metrics'].get('full_error_messages', {})
+            if not full_msgs:
                 continue
             has_any = True
             rows = []
-            for msg, count in msgs.items():
-                cat = self._categorize_error_message(msg)
-                display_msg = msg[:300] + "..." if len(msg) > 300 else msg
-                rows.append([cat, display_msg, count])
+            # Use pre-categorized mapping from individual analysis for consistency
+            message_categories = data['metrics'].get('error_message_categories', {})
+            for msg, count in full_msgs.items():
+                # Use pre-categorized mapping if available, otherwise fall back to LLM service
+                cat = message_categories.get(msg, self._categorize_error_message(msg))
+                rows.append([cat, msg, count])  # Full message, no truncation
+            
             # Sort by category then count desc
-            df = pd.DataFrame(rows, columns=['Error Category', 'Error Message', 'Count'])
+            df = pd.DataFrame(rows, columns=['Error Category', 'Full Error Message', 'Count'])
             df.sort_values(by=['Error Category', 'Count'], ascending=[True, False], inplace=True)
+            
             # Title per service
             pd.DataFrame([file_name]).to_excel(writer, sheet_name=sheet_name, startrow=start_row, index=False, header=False)
             df.to_excel(writer, sheet_name=sheet_name, startrow=start_row + 2, index=False)
+            
             # Format block
             header_row_index = start_row + 3
             for cell in ws[header_row_index]:
                 cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+            
+            # Right-align counts (third column)
             data_start = start_row + 4
             data_end = data_start + len(df) - 1
             for row_num in range(data_start, data_end + 1):
                 ws[f'C{row_num}'].alignment = Alignment(horizontal='right')
+            
+            # Set column widths for better readability
+            ws.column_dimensions['A'].width = 25  # Category
+            ws.column_dimensions['B'].width = 100  # Full message
+            ws.column_dimensions['C'].width = 10   # Count
+            
             start_row += len(df) + 4
+        
         if not has_any:
             pd.DataFrame().to_excel(writer, sheet_name=sheet_name, index=False)
+
 
     def _create_charts_sheet(self, writer, all_data: Dict):
         """Embed chart images into a Charts sheet in the Excel workbook."""
@@ -639,6 +783,7 @@ class FinalPolishedCombinedReport:
                 'response_time_percentiles.png',
                 'daily_response_time_range.png',
                 'response_time_analysis.png',
+                'error_categories_chart.png',
             ]
             for chart_file in ordered:
                 if chart_file in charts:
@@ -680,7 +825,7 @@ class FinalPolishedCombinedReport:
             current_row = 1
             # Title
             title_cell = ws.cell(row=current_row, column=1, value=f"Service: {file_name}")
-            title_cell.font = Font(bold=True)
+            title_cell.font = Font(bold=True, size=14)
             current_row += 2
 
             # Separate, neat tables: Success/Error, LLM Cost, Error Categories, Error Messages, then Charts
@@ -688,12 +833,18 @@ class FinalPolishedCombinedReport:
             st = data['metrics'].get('status', {})
             rt = data['metrics'].get('response_time', {})
             cost = data['metrics'].get('llm_cost', {})
+            
+            # Add title for Success/Error table
+            title_cell = ws.cell(row=current_row, column=1, value="Failure/Success")
+            title_cell.font = Font(bold=True, size=12)
+            current_row += 1
+            
             success_df = pd.DataFrame([
                 ['Total', st.get('total', 0)],
                 ['Success', st.get('success_count', 0)],
                 ['Errors', st.get('error_count', 0)],
-                ['Success %', (st.get('success_rate', 0) / 100.0) if st else 0.0],
-                ['Error %', (st.get('error_rate', 0) / 100.0) if st else 0.0],
+                ['Success Rate', (st.get('success_rate', 0) / 100.0) if st else 0.0],
+                ['Error Rate', (st.get('error_rate', 0) / 100.0) if st else 0.0],
             ], columns=['Metric', 'Value'])
             success_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
             header_row = current_row
@@ -715,12 +866,17 @@ class FinalPolishedCombinedReport:
 
             # 2) LLM Cost table
             if cost:
+                # Add title for LLM Cost table
+                title_cell = ws.cell(row=current_row, column=1, value="LLM Cost ($)")
+                title_cell.font = Font(bold=True, size=12)
+                current_row += 1
+                
                 llm_df = pd.DataFrame([
-                    ['Avg Cost ($)', cost.get('avg', 0.0)],
-                    ['Min Cost ($)', cost.get('min', 0.0)],
-                    ['Max Cost ($)', cost.get('max', 0.0)],
-                    ['Median Cost ($)', cost.get('median', 0.0)],
-                    ['Total Cost ($)', cost.get('total', 0.0)],
+                    ['Avg Cost', cost.get('avg', 0.0)],
+                    ['Min Cost', cost.get('min', 0.0)],
+                    ['Max Cost', cost.get('max', 0.0)],
+                    ['Median Cost', cost.get('median', 0.0)],
+                    ['Total Cost', cost.get('total', 0.0)],
                 ], columns=['Metric', 'Value'])
                 llm_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
                 header_row = current_row
@@ -729,7 +885,7 @@ class FinalPolishedCombinedReport:
                 for r in range(header_row + 1, header_row + 1 + len(llm_df)):
                     v = ws.cell(row=r, column=2)
                     v.alignment = Alignment(horizontal='right')
-                    v.number_format = '"$"#,##0.0000'
+                    v.number_format = '#,##0.0000'
                 llm_last = header_row + len(llm_df)
                 llm_ref = f"A{header_row}:B{llm_last}"
                 llm_table = Table(displayName=f"T_LLM_{ws.title.replace(' ', '_')}", ref=llm_ref)
@@ -737,11 +893,41 @@ class FinalPolishedCombinedReport:
                 ws.add_table(llm_table)
                 current_row = llm_last + 2
 
-            # 2b) Mode-wise and Process-wise tables when available
+            # 3) Response Time table
+            if rt:
+                # Add title for Response Time table
+                title_cell = ws.cell(row=current_row, column=1, value="Response Time (s)")
+                title_cell.font = Font(bold=True, size=12)
+                current_row += 1
+                
+                rt_df = pd.DataFrame([
+                    ['Avg Time', rt.get('avg', 0.0)],
+                    ['Min Time', rt.get('min', 0.0)],
+                    ['Max Time', rt.get('max', 0.0)],
+                    ['Median Time', rt.get('median', 0.0)],
+                    ['Std Dev', rt.get('std', 0.0)],
+                    ['Records Analyzed', rt.get('count', 0)],
+                ], columns=['Metric', 'Value'])
+                rt_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
+                header_row = current_row
+                for cell in ws[header_row]:
+                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+                for r in range(header_row + 1, header_row + 1 + len(rt_df)):
+                    v = ws.cell(row=r, column=2)
+                    v.alignment = Alignment(horizontal='right')
+                    v.number_format = '0.00'
+                rt_last = header_row + len(rt_df)
+                rt_ref = f"A{header_row}:B{rt_last}"
+                rt_table = Table(displayName=f"T_RT_{ws.title.replace(' ', '_')}", ref=rt_ref)
+                rt_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight10', showRowStripes=True)
+                ws.add_table(rt_table)
+                current_row = rt_last + 2
+
+            # 4) Mode-wise and Process-wise tables when available
             m = data['metrics']
             # Mode-wise RT
             if m.get('rt_by_mode'):
-                ws.cell(row=current_row, column=1, value='Response Time by Mode').font = Font(bold=True)
+                ws.cell(row=current_row, column=1, value='Response Time by Mode (s)').font = Font(bold=True)
                 current_row += 1
                 df = pd.DataFrame(m['rt_by_mode']) if isinstance(m['rt_by_mode'], list) else pd.DataFrame(m['rt_by_mode'])
                 # Reorder columns if present
@@ -759,7 +945,7 @@ class FinalPolishedCombinedReport:
                             cell = ws.cell(row=r, column=col)
                             if isinstance(cell.value, (int, float)):
                                 cell.alignment = Alignment(horizontal='right')
-                                cell.number_format = '0.00" s"'
+                                cell.number_format = '0.00'
                 for key in ['count','effective_mode']:
                     if key in headers:
                         col = headers[key]
@@ -771,7 +957,7 @@ class FinalPolishedCombinedReport:
                 current_row += len(df) + 2
             # Mode-wise Cost
             if m.get('cost_by_mode'):
-                ws.cell(row=current_row, column=1, value='LLM Cost by Mode').font = Font(bold=True)
+                ws.cell(row=current_row, column=1, value='LLM Cost by Mode ($)').font = Font(bold=True)
                 current_row += 1
                 df = pd.DataFrame(m['cost_by_mode']) if isinstance(m['cost_by_mode'], list) else pd.DataFrame(m['cost_by_mode'])
                 cols = [c for c in ['effective_mode','mode_name','avg','median','min','max','total','count'] if c in df.columns]
@@ -788,7 +974,7 @@ class FinalPolishedCombinedReport:
                             cell = ws.cell(row=r, column=col)
                             if isinstance(cell.value, (int, float)):
                                 cell.alignment = Alignment(horizontal='right')
-                                cell.number_format = '"$"#,##0.0000'
+                                cell.number_format = '#,##0.0000'
                 if 'count' in headers:
                     col = headers['count']
                     for r in range(header_row + 1, last_row + 1):
@@ -828,7 +1014,7 @@ class FinalPolishedCombinedReport:
 
             # Process-wise RT
             if m.get('rt_by_process'):
-                ws.cell(row=current_row, column=1, value='Response Time by Process').font = Font(bold=True)
+                ws.cell(row=current_row, column=1, value='Response Time by Process (s)').font = Font(bold=True)
                 current_row += 1
                 df = pd.DataFrame(m['rt_by_process'])
                 cols = [c for c in ['process_name','avg','p50','min','max','std','count'] if c in df.columns]
@@ -845,7 +1031,7 @@ class FinalPolishedCombinedReport:
                             cell = ws.cell(row=r, column=col)
                             if isinstance(cell.value, (int, float)):
                                 cell.alignment = Alignment(horizontal='right')
-                                cell.number_format = '0.00" s"'
+                                cell.number_format = '0.00'
                 if 'count' in headers:
                     col = headers['count']
                     for r in range(header_row + 1, last_row + 1):
@@ -856,7 +1042,7 @@ class FinalPolishedCombinedReport:
                 current_row += len(df) + 2
             # Process-wise Cost
             if m.get('cost_by_process'):
-                ws.cell(row=current_row, column=1, value='LLM Cost by Process').font = Font(bold=True)
+                ws.cell(row=current_row, column=1, value='LLM Cost by Process ($)').font = Font(bold=True)
                 current_row += 1
                 df = pd.DataFrame(m['cost_by_process'])
                 cols = [c for c in ['process_name','avg','median','min','max','total','count'] if c in df.columns]
@@ -873,7 +1059,7 @@ class FinalPolishedCombinedReport:
                             cell = ws.cell(row=r, column=col)
                             if isinstance(cell.value, (int, float)):
                                 cell.alignment = Alignment(horizontal='right')
-                                cell.number_format = '\"$\"#,##0.0000'
+                                cell.number_format = '#,##0.0000'
                 for key in ['count','effective_mode']:
                     if key in headers:
                         col = headers[key]
@@ -915,7 +1101,7 @@ class FinalPolishedCombinedReport:
 
             # Process × Mode RT
             if m.get('rt_by_process_mode'):
-                ws.cell(row=current_row, column=1, value='Response Time by Process × Mode').font = Font(bold=True)
+                ws.cell(row=current_row, column=1, value='Response Time by Process × Mode (s)').font = Font(bold=True)
                 current_row += 1
                 df = pd.DataFrame(m['rt_by_process_mode'])
                 cols = [c for c in ['process_name','effective_mode','avg','p50','min','max','std','count'] if c in df.columns]
@@ -924,7 +1110,7 @@ class FinalPolishedCombinedReport:
                 current_row += len(df) + 2
             # Process × Mode Cost
             if m.get('cost_by_process_mode'):
-                ws.cell(row=current_row, column=1, value='LLM Cost by Process × Mode').font = Font(bold=True)
+                ws.cell(row=current_row, column=1, value='LLM Cost by Process × Mode ($)').font = Font(bold=True)
                 current_row += 1
                 df = pd.DataFrame(m['cost_by_process_mode'])
                 cols = [c for c in ['process_name','effective_mode','avg','median','min','max','total','count'] if c in df.columns]
@@ -941,33 +1127,17 @@ class FinalPolishedCombinedReport:
                 df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
                 current_row += len(df) + 2
 
-            # 3) Error Categories table
-            cats = data['metrics'].get('error_categories', {})
-            if cats:
-                ws.cell(row=current_row, column=1, value='Error Categories').font = Font(bold=True)
-                current_row += 1
-                cat_df = pd.DataFrame([[c, n] for c, n in cats.items()], columns=['Error Category', 'Count'])
-                cat_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
-                cat_header = current_row
-                for cell in ws[cat_header]:
-                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
-                for r in range(cat_header + 1, cat_header + 1 + len(cat_df)):
-                    ws.cell(row=r, column=2).alignment = Alignment(horizontal='right')
-                cat_last_row = cat_header + len(cat_df)
-                cat_ref = f"A{cat_header}:B{cat_last_row}"
-                cat_table = Table(displayName=f"T_ErrCats_{ws.title.replace(' ', '_')}", ref=cat_ref)
-                cat_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight11', showRowStripes=True)
-                ws.add_table(cat_table)
-                current_row = cat_last_row + 2
-
-            # 4) Error Messages table (with derived Category column)
+            # 3) Error Messages table (with derived Category column) - FIRST as per convention
             msgs = data['metrics'].get('error_messages', {})
             if msgs:
                 ws.cell(row=current_row, column=1, value='Error Messages').font = Font(bold=True)
                 current_row += 1
                 rows = []
+                # Use pre-categorized mapping from individual analysis for consistency
+                message_categories = data['metrics'].get('error_message_categories', {})
                 for m, n in msgs.items():
-                    cat = self._categorize_error_message(m)
+                    # Use pre-categorized mapping if available, otherwise fall back to LLM service
+                    cat = message_categories.get(m, self._categorize_error_message(m))
                     display_msg = m if len(m) <= 300 else m[:300]+"..."
                     rows.append([cat, display_msg, n])
                 msg_df = pd.DataFrame(rows, columns=['Error Category', 'Error Message', 'Count'])
@@ -987,6 +1157,25 @@ class FinalPolishedCombinedReport:
                 ws.add_table(msg_table)
                 current_row = msg_last_row + 2
 
+            # 4) Error Categories table - SECOND as per convention
+            cats = data['metrics'].get('error_categories', {})
+            if cats:
+                ws.cell(row=current_row, column=1, value='Error Categories').font = Font(bold=True)
+                current_row += 1
+                cat_df = pd.DataFrame([[c, n] for c, n in cats.items()], columns=['Error Category', 'Count'])
+                cat_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
+                cat_header = current_row
+                for cell in ws[cat_header]:
+                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+                for r in range(cat_header + 1, cat_header + 1 + len(cat_df)):
+                    ws.cell(row=r, column=2).alignment = Alignment(horizontal='right')
+                cat_last_row = cat_header + len(cat_df)
+                cat_ref = f"A{cat_header}:B{cat_last_row}"
+                cat_table = Table(displayName=f"T_ErrCats_{ws.title.replace(' ', '_')}", ref=cat_ref)
+                cat_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight11', showRowStripes=True)
+                ws.add_table(cat_table)
+                current_row = cat_last_row + 2
+
             # 5) Charts block
             charts = data.get('charts', {})
             ordered = [
@@ -996,6 +1185,7 @@ class FinalPolishedCombinedReport:
                 'response_time_percentiles.png',
                 'daily_response_time_range.png',
                 'response_time_analysis.png',
+                'error_categories_chart.png',
             ]
             for chart_file in ordered:
                 if chart_file in charts:
@@ -1019,8 +1209,8 @@ class FinalPolishedCombinedReport:
         ws.cell(row=1, column=1, value='Index')
         ws.cell(row=2, column=1, value='Click to jump to sheet:')
         sheets = [
-            'Overview', 'Response Times', 'Success Rates', 'LLM Costs',
-            'Error Categories', 'Category Messages', 'Charts'
+            'Response Times', 'Success Rates', 'LLM Costs',
+            'Error Categories', 'Detailed Error Messages', 'Charts'
         ]
         # Include per-service sheets if any
         if hasattr(self, '_service_sheet_names'):
@@ -1076,8 +1266,8 @@ class FinalPolishedCombinedReport:
         current_y = 0.90
         rt = data['metrics'].get('response_time', {})
         rt_data = [
-            ['Average Time', f"{rt.get('avg', 0):.2f} s"], ['Min Time', f"{rt.get('min', 0):.2f} s"],
-            ['Max Time', f"{rt.get('max', 0):.2f} s"], ['Median Time', f"{rt.get('median', 0):.2f} s"]
+            ['Average Time', f"{rt.get('avg', 0):.2f}"], ['Min Time', f"{rt.get('min', 0):.2f}"],
+            ['Max Time', f"{rt.get('max', 0):.2f}"], ['Median Time', f"{rt.get('median', 0):.2f}"]
         ]
         axis_height = 0.05 + len(rt_data) * 0.035
         axis_bottom = current_y - axis_height
@@ -1088,23 +1278,23 @@ class FinalPolishedCombinedReport:
         current_y = axis_bottom - 0.04
         st = data['metrics'].get('status', {})
         status_data = [
-            ['Success', f"{st.get('success_count', 0):,}", f"{st.get('success_rate', 0):.2f}%"],
-            ['Error', f"{st.get('error_count', 0):,}", f"{st.get('error_rate', 0):.2f}%"],
-            ['Total', f"{st.get('total', 0):,}", '100.00%']
+            ['Success', f"{st.get('success_count', 0):,}", f"{st.get('success_rate', 0):.2f}"],
+            ['Error', f"{st.get('error_count', 0):,}", f"{st.get('error_rate', 0):.2f}"],
+            ['Total', f"{st.get('total', 0):,}", '100.00']
         ]
         axis_height = 0.05 + len(status_data) * 0.035
         axis_bottom = current_y - axis_height
         ax2 = fig.add_axes([0.1, axis_bottom, 0.8, axis_height])
         ax2.set_title('Success & Failure Metrics', fontsize=12, weight='bold', pad=10)
         ax2.axis('off')
-        self._render_table(ax2, status_data, ['Status', 'Count', '% of Total'], col_widths=[0.4, 0.3, 0.3])
+        self._render_table(ax2, status_data, ['Status', 'Count', 'Rate'], col_widths=[0.4, 0.3, 0.3])
         current_y = axis_bottom - 0.04
         if 'llm_cost' in data['metrics']:
             cost = data['metrics'].get('llm_cost', {})
             cost_data = [
-                ['Average Cost', f"${cost.get('avg', 0):.4f}"], ['Min Cost', f"${cost.get('min', 0):.4f}"],
-                ['Max Cost', f"${cost.get('max', 0):.4f}"], ['Median Cost', f"${cost.get('median', 0):.4f}"],
-                ['Total Cost', f"${cost.get('total', 0):.2f}"]
+                ['Average Cost', f"{cost.get('avg', 0):.4f}"], ['Min Cost', f"{cost.get('min', 0):.4f}"],
+                ['Max Cost', f"{cost.get('max', 0):.4f}"], ['Median Cost', f"{cost.get('median', 0):.4f}"],
+                ['Total Cost', f"{cost.get('total', 0):.2f}"]
             ]
             axis_height = 0.05 + len(cost_data) * 0.035
             axis_bottom = current_y - axis_height
@@ -1123,8 +1313,11 @@ class FinalPolishedCombinedReport:
         # Build Category → Messages table if messages exist
         if has_messages:
             rows = []
+            # Use pre-categorized mapping from individual analysis for consistency
+            message_categories = data['metrics'].get('error_message_categories', {})
             for msg, count in data['metrics']['error_messages'].items():
-                cat = self._categorize_error_message(msg)
+                # Use pre-categorized mapping if available, otherwise fall back to LLM service
+                cat = message_categories.get(msg, self._categorize_error_message(msg))
                 rows.append([cat, msg, f"{count:,}"])
             if rows:
                 desired_height = 0.05 + len(rows) * 0.03
@@ -1207,21 +1400,21 @@ class FinalPolishedCombinedReport:
                 rows.append([
                     r.get('process_name',''), f"{r.get('avg',0):.2f}", f"{r.get('p50',0):.2f}", f"{r.get('min',0):.2f}", f"{r.get('max',0):.2f}", f"{r.get('std',0):.2f}", f"{r.get('count',0):,}"
                 ])
-            blocks.append(('Response Time by Process', ['Process Name','Avg (s)','P50 (s)','Min (s)','Max (s)','Std','N'], rows))
+            blocks.append(('Response Time by Process', ['Process Name','Avg','P50','Min','Max','Std','N'], rows))
         if has_cost:
             rows = []
             for r in m['cost_by_process']:
                 rows.append([
                     r.get('process_name',''), f"{r.get('avg',0):.4f}", f"{r.get('median',0):.4f}", f"{r.get('min',0):.4f}", f"{r.get('max',0):.4f}", f"{r.get('total',0):.2f}", f"{r.get('count',0):,}"
                 ])
-            blocks.append(('LLM Cost by Process', ['Process Name','Avg ($)','Median','Min','Max','Total ($)','N'], rows))
+            blocks.append(('LLM Cost by Process', ['Process Name','Avg','Median','Min','Max','Total','N'], rows))
         if has_fail:
             rows = []
             for r in m['fail_by_process']:
                 rows.append([
-                    r.get('process_name',''), f"{r.get('error',0):,}", f"{r.get('info',0):,}", f"{r.get('total',0):,}", f"{r.get('failure_pct',0):.2f}%"
+                    r.get('process_name',''), f"{r.get('error',0):,}", f"{r.get('info',0):,}", f"{r.get('total',0):,}", f"{r.get('failure_pct',0):.2f}"
                 ])
-            blocks.append(('Failure Rate by Process', ['Process Name','Error','Success (Info)','Total','Failure %'], rows))
+            blocks.append(('Failure Rate by Process', ['Process Name','Error','Success (Info)','Total','Failure Rate'], rows))
 
         for title, headers, rows in blocks:
             axis_height = 0.05 + max(1, len(rows)) * 0.035
@@ -1258,7 +1451,7 @@ class FinalPolishedCombinedReport:
                     f"{r.get('avg',0):.2f}", f"{r.get('p50',0):.2f}", f"{r.get('min',0):.2f}", f"{r.get('max',0):.2f}",
                     f"{r.get('std',0):.2f}", f"{r.get('count',0):,}"
                 ])
-            blocks.append(('Response Time by Mode', ['Mode','Name','Avg (s)','P50 (s)','Min (s)','Max (s)','Std','N'], rt_rows))
+            blocks.append(('Response Time by Mode', ['Mode','Name','Avg','P50','Min','Max','Std','N'], rt_rows))
         if has_cost:
             cost_rows = []
             for r in m['cost_by_mode']:
@@ -1267,15 +1460,15 @@ class FinalPolishedCombinedReport:
                     f"{r.get('avg',0):.4f}", f"{r.get('median',0):.4f}", f"{r.get('min',0):.4f}", f"{r.get('max',0):.4f}",
                     f"{r.get('total',0):.2f}", f"{r.get('count',0):,}"
                 ])
-            blocks.append(('LLM Cost by Mode', ['Mode','Name','Avg ($)','Median','Min','Max','Total ($)','N'], cost_rows))
+            blocks.append(('LLM Cost by Mode', ['Mode','Name','Avg','Median','Min','Max','Total','N'], cost_rows))
         if has_fail:
             fail_rows = []
             for r in m['fail_by_mode']:
                 fail_rows.append([
                     r.get('effective_mode',''), r.get('mode_name',''),
-                    f"{r.get('error',0):,}", f"{r.get('info',0):,}", f"{r.get('total',0):,}", f"{r.get('failure_pct',0):.2f}%"
+                    f"{r.get('error',0):,}", f"{r.get('info',0):,}", f"{r.get('total',0):,}", f"{r.get('failure_pct',0):.2f}"
                 ])
-            blocks.append(('Failure Rate by Mode', ['Mode','Name','Error','Success (Info)','Total','Failure %'], fail_rows))
+            blocks.append(('Failure Rate by Mode', ['Mode','Name','Error','Success (Info)','Total','Failure Rate'], fail_rows))
 
         # Render blocks
         for title, headers, rows in blocks:

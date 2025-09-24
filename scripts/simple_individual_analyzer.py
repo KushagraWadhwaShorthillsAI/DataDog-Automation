@@ -21,6 +21,7 @@ import traceback
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data_loaders import load_data_from_file
+from llm_service import llm_service
 
 
 class SimpleIndividualAnalyzer:
@@ -190,95 +191,7 @@ class SimpleIndividualAnalyzer:
         
         print(f"Column mappings: {self.column_mappings}")
     
-    def _categorize_error_messages_properly(self, error_messages: List[str]) -> Dict[str, int]:
-        """Properly categorize error messages and count occurrences"""
-        categories = {}
-        
-        # Count how many times each category appears
-        for error_msg in error_messages:
-            error_str = str(error_msg).lower()
-            
-            # Categorize based on message content
-            if 'timeout' in error_str or 'timed out' in error_str or 'time out' in error_str:
-                category = 'Timeout Errors'
-            elif 'connection' in error_str or 'connect' in error_str or 'network' in error_str or 'socket' in error_str:
-                category = 'Network/Connection Errors'
-            elif 'auth' in error_str or 'permission' in error_str or 'unauthorized' in error_str or 'forbidden' in error_str:
-                category = 'Authentication/Authorization Errors'
-            elif 'not found' in error_str or '404' in error_str or 'missing' in error_str or 'no results' in error_str or 'contains no results' in error_str:
-                category = 'Resource Not Found Errors'
-            elif 'invalid data payload' in error_str or 'validation' in error_str or 'invalid' in error_str or 'bad request' in error_str or 'payload' in error_str:
-                category = 'Data Validation/Payload Errors'
-            elif 'internal server error' in error_str or 'server error' in error_str or '500' in error_str:
-                category = 'Internal Server Errors'
-            elif 'litellm' in error_str or 'llm' in error_str or 'summarize_document' in error_str:
-                category = 'LLM Service Errors'
-            elif 'query' in error_str or 'params' in error_str or 'parameter' in error_str or 'filtertype' in error_str:
-                category = 'Query/Parameter Errors'
-            elif 'exception' in error_str or 'baseexception' in error_str:
-                category = 'Application Exception Errors'
-            elif 'model mapping' in error_str or 'fetch' in error_str:
-                category = 'Service Configuration Errors'
-            elif 'json' in error_str or 'parse' in error_str or 'format' in error_str:
-                category = 'Data Format Errors'
-            else:
-                category = 'Other/Uncategorized Errors'
-            
-            # Count occurrences
-            if category in categories:
-                categories[category] += 1
-            else:
-                categories[category] = 1
-        
-        return categories
-    
-    def _categorize_error_messages(self, error_messages: List[str]) -> Dict[str, int]:
-        """Categorize error messages into types and count occurrences"""
-        categories = {}
-        
-        for error_msg in error_messages:
-            error_str = str(error_msg).lower()
-            
-            # Enhanced categorization with better patterns
-            if 'timeout' in error_str or 'timed out' in error_str or 'time out' in error_str:
-                category = 'Timeout Errors'
-            elif 'connection' in error_str or 'connect' in error_str or 'network' in error_str or 'socket' in error_str:
-                category = 'Network/Connection Errors'
-            elif 'auth' in error_str or 'permission' in error_str or 'unauthorized' in error_str or 'forbidden' in error_str:
-                category = 'Authentication/Authorization Errors'
-            elif 'not found' in error_str or '404' in error_str or 'missing' in error_str or 'no results' in error_str or 'contains no results' in error_str:
-                category = 'Resource Not Found Errors'
-            elif 'invalid data payload' in error_str or 'validation' in error_str or 'invalid' in error_str or 'bad request' in error_str or 'payload' in error_str:
-                category = 'Data Validation/Payload Errors'
-            elif 'internal server error' in error_str or 'server error' in error_str or '500' in error_str:
-                category = 'Internal Server Errors'
-            elif 'litellm' in error_str or 'llm' in error_str or 'summarize_document' in error_str:
-                category = 'LLM Service Errors'
-            elif 'query' in error_str or 'params' in error_str or 'parameter' in error_str or 'filtertype' in error_str:
-                category = 'Query/Parameter Errors'
-            elif 'exception' in error_str or 'baseexception' in error_str:
-                category = 'Application Exception Errors'
-            elif 'model mapping' in error_str or 'fetch' in error_str:
-                category = 'Service Configuration Errors'
-            elif 'json' in error_str or 'parse' in error_str or 'format' in error_str:
-                category = 'Data Format Errors'
-            else:
-                category = 'Other/Uncategorized Errors'
-            
-            # Count occurrences in the error breakdown
-            if hasattr(self, 'df') and self.column_mappings.get('message'):
-                message_col = self.column_mappings['message']
-                status_col = self.column_mappings.get('status')
-                if status_col:
-                    error_df = self.df[self.df[status_col].str.lower() == 'error']
-                    count = len(error_df[error_df[message_col] == error_msg])
-                    
-                    if category in categories:
-                        categories[category] += count
-                    else:
-                        categories[category] = count
-        
-        return categories
+    # Removed old hardcoded categorization methods - now using LLM service for consistency
     
     def preprocess_data(self) -> bool:
         """Basic preprocessing while keeping original for accurate error counts"""
@@ -310,6 +223,16 @@ class SimpleIndividualAnalyzer:
                 after_service = len(self.df)
                 print(f"✓ Dropped rows with blank service: {before_service - after_service}")
             
+            # Drop rows with blank/NaN source
+            source_col = self.column_mappings.get('source')
+            if source_col and source_col in self.df.columns:
+                before_source = len(self.df)
+                # Normalize source strings and drop empties
+                self.df[source_col] = self.df[source_col].astype(str).str.strip()
+                self.df = self.df[self.df[source_col].notna() & (self.df[source_col] != '')].copy()
+                after_source = len(self.df)
+                print(f"✓ Dropped rows with blank source: {before_source - after_source}")
+            
             # Add formatted date column
             if self.column_mappings['date']:
                 date_col = self.column_mappings['date']
@@ -335,7 +258,7 @@ class SimpleIndividualAnalyzer:
                 after_status = len(self.df)
                 print(f"✓ Filtered status to ['info','error']: removed {before_status - after_status}")
             
-            # Remove response time outliers (0-2000ms range)
+            # Remove response time outliers (0-1000ms range)
             if self.column_mappings['response_time']:
                 rt_col = self.column_mappings['response_time']
                 self.df[rt_col] = pd.to_numeric(self.df[rt_col], errors='coerce')
@@ -345,7 +268,7 @@ class SimpleIndividualAnalyzer:
                     (self.df[rt_col].notna())
                 )
                 self.df = self.df[valid_rt_mask].copy()
-                print(f"✓ Removed response time outliers")
+                print(f"✓ Removed response time outliers (>2000ms)")
 
             # Compute effective mode if mode columns exist (for QnA sheet)
             req_mode_col = self.column_mappings.get('request_payload_mode')
@@ -439,8 +362,24 @@ class SimpleIndividualAnalyzer:
                             error_counts = error_messages.value_counts()
                             metrics['error_breakdown'] = error_counts.to_dict()
                             
-                            # STEP 4: Categorize based on actual error messages
-                            error_categories = self._categorize_error_messages_properly(error_messages.tolist())
+                            # STEP 4: Create message-to-category mapping FIRST (for consistency)
+                            message_to_category = {}
+                            print(f"  Creating message-to-category mapping for {len(error_messages.unique())} unique messages...")
+                            for i, msg in enumerate(error_messages.unique()):
+                                try:
+                                    category = llm_service.categorize_error(msg)
+                                    message_to_category[msg] = category
+                                    print(f"    {i+1}. '{msg[:40]}...' → {category}")
+                                except Exception as e:
+                                    print(f"    {i+1}. '{msg[:40]}...' → ERROR: {e}")
+                                    message_to_category[msg] = 'Other/Uncategorized Errors'
+                            metrics['error_message_categories'] = message_to_category
+                            
+                            # STEP 5: Count total occurrences by category (using the mapping)
+                            error_categories = {}
+                            for msg in error_messages:
+                                category = message_to_category[msg]  # Use the mapping for consistency
+                                error_categories[category] = error_categories.get(category, 0) + 1
                             metrics['error_categories'] = error_categories
                             
                             print(f"  Error message types: {len(error_counts)}")
@@ -449,7 +388,13 @@ class SimpleIndividualAnalyzer:
                             # Debug: Show actual error messages found
                             print(f"  Sample error messages:")
                             for i, (msg, count) in enumerate(error_counts.head(3).items()):
-                                print(f"    {i+1}. '{msg}' (count: {count})")
+                                category = message_to_category.get(msg, 'UNKNOWN')
+                                print(f"    {i+1}. '{msg}' (count: {count}) → {category}")
+                            
+                            # Debug: Show category breakdown
+                            print(f"  Category breakdown:")
+                            for cat, count in error_categories.items():
+                                print(f"    {cat}: {count}")
                         else:
                             print(f"  No error messages found in message column")
                     else:
@@ -502,9 +447,9 @@ class SimpleIndividualAnalyzer:
                     proc_cost = df_proc_cost.dropna().groupby(process_col)[cost_col].agg(['mean','median','min','max','sum','count']).rename(columns={'sum':'total'}).sort_values('total', ascending=False)
                     metrics['llm_cost_by_process'] = proc_cost.reset_index().to_dict(orient='records')
                     print(f"✓ Computed LLM cost by process: {len(proc_cost)} rows")
-                # Failure table by process
+                # Failure table by process - USE SAME PREPROCESSED DATA as overall counts
                 status_col = self.column_mappings.get('status')
-                if status_col and status_col in self.df.columns:
+                if status_col and status_col in self.df.columns and process_col in self.df.columns:
                     df_proc_status = self.df[[process_col, status_col]].copy()
                     df_proc_status[status_col] = df_proc_status[status_col].astype(str).str.strip().str.lower()
                     pvt = df_proc_status.pivot_table(index=process_col, columns=status_col, aggfunc='size', fill_value=0)
@@ -514,7 +459,10 @@ class SimpleIndividualAnalyzer:
                     pvt['total'] = pvt['error'] + pvt['info']
                     pvt['failure_pct'] = (pvt['error'] / pvt['total'] * 100).fillna(0)
                     metrics['failure_by_process'] = pvt.to_dict(orient='records')
-                    print(f"✓ Computed failure rates by process: {len(pvt)} rows")
+                    print(f"✓ Computed failure rates by process (from preprocessed data): {len(pvt)} rows")
+                    print(f"  Total errors found: {pvt['error'].sum()}")
+                    print(f"  Total success found: {pvt['info'].sum()}")
+                    print(f"  This should match overall error count: {processed_errors}")
 
             # Effective mode-wise metrics (for QnA-like sheets)
             if 'effective_mode' in self.df.columns:
@@ -544,7 +492,7 @@ class SimpleIndividualAnalyzer:
                     mode_cost['mode_name'] = mode_cost['effective_mode'].apply(lambda m: mode_map.get(int(m), str(int(m)) if not pd.isna(m) else 'Unknown'))
                     metrics['llm_cost_by_effective_mode'] = mode_cost.to_dict(orient='records')
                     print(f"✓ Computed LLM cost by effective mode: {len(mode_cost)} rows")
-                # Failure table by effective mode
+                # Failure table by effective mode - USE SAME PREPROCESSED DATA
                 status_col = self.column_mappings.get('status')
                 if status_col and status_col in self.df.columns:
                     df_mode_status = self.df[['effective_mode', status_col]].copy()
@@ -559,7 +507,9 @@ class SimpleIndividualAnalyzer:
                     pivot['failure_pct'] = (pivot['error'] / pivot['total'] * 100).fillna(0)
                     pivot['mode_name'] = pivot['effective_mode'].apply(lambda m: mode_map.get(int(m), str(int(m)) if not pd.isna(m) else 'Unknown'))
                     metrics['failure_by_effective_mode'] = pivot.to_dict(orient='records')
-                    print(f"✓ Computed failure rates by effective mode: {len(pivot)} rows")
+                    print(f"✓ Computed failure rates by effective mode (from preprocessed data): {len(pivot)} rows")
+                    print(f"  Total errors found: {pivot['error'].sum()}")
+                    print(f"  Total success found: {pivot['info'].sum()}")
 
             # Process x Mode combined metrics (when both exist)
             process_col = self.column_mappings.get('process_name')
@@ -579,7 +529,7 @@ class SimpleIndividualAnalyzer:
                     pm_cost = df_pm_cost.dropna().groupby([process_col, 'effective_mode'])[cost_col].agg(['mean','median','min','max','sum','count']).rename(columns={'sum':'total'}).reset_index()
                     metrics['llm_cost_by_process_mode'] = pm_cost.to_dict(orient='records')
                     print(f"✓ Computed LLM cost by process x mode: {len(pm_cost)} rows")
-                # Failure table by process x mode
+                # Failure table by process x mode - USE SAME PREPROCESSED DATA
                 status_col = self.column_mappings.get('status')
                 if status_col and status_col in self.df.columns:
                     df_pm_status = self.df[[process_col, 'effective_mode', status_col]].copy()
@@ -591,7 +541,9 @@ class SimpleIndividualAnalyzer:
                     pm_pivot['total'] = pm_pivot['error'] + pm_pivot['info']
                     pm_pivot['failure_pct'] = (pm_pivot['error'] / pm_pivot['total'] * 100).fillna(0)
                     metrics['failure_by_process_mode'] = pm_pivot.to_dict(orient='records')
-                    print(f"✓ Computed failure rates by process x mode: {len(pm_pivot)} rows")
+                    print(f"✓ Computed failure rates by process x mode (from preprocessed data): {len(pm_pivot)} rows")
+                    print(f"  Total errors found: {pm_pivot['error'].sum()}")
+                    print(f"  Total success found: {pm_pivot['info'].sum()}")
             
             return metrics
             
@@ -964,11 +916,11 @@ class SimpleIndividualAnalyzer:
             
             # Add summary statistics as text
             overall_stats = f"""Daily Statistics:
-Avg Min: {daily_detailed['min'].mean():.1f}s
-Avg Max: {daily_detailed['max'].mean():.1f}s  
-Avg Range: {(daily_detailed['max'] - daily_detailed['min']).mean():.1f}s
-Most Stable Day: {(daily_detailed['max'] - daily_detailed['min']).idxmin().strftime('%m-%d')}
-Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
+        Avg Min: {daily_detailed['min'].mean():.1f}s
+        Avg Max: {daily_detailed['max'].mean():.1f}s  
+        Avg Range: {(daily_detailed['max'] - daily_detailed['min']).mean():.1f}s
+        Most Stable Day: {(daily_detailed['max'] - daily_detailed['min']).idxmin().strftime('%m-%d')}
+        Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
             
             ax.text(0.02, 0.98, overall_stats, transform=ax.transAxes, fontsize=10,
                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
@@ -1280,11 +1232,11 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
         latency = metrics['latency']
         change_symbol = '→' if latency['change_absolute'] == 0 else ('↓' if latency['change_absolute'] < 0 else '↑')
         print(f"1. Latency Metric")
-        print(f"Today's Avg Response Time: {latency['today']:.3f}ms")
-        print(f"Yesterday's Avg Response Time: {latency['yesterday']:.3f}ms")
+        print(f"Today's Avg Response Time (ms): {latency['today']:.3f}")
+        print(f"Yesterday's Avg Response Time (ms): {latency['yesterday']:.3f}")
         arrow = change_symbol
         word = 'no change' if latency['change_absolute'] == 0 else ('improvement' if latency['change_absolute'] < 0 else 'increase')
-        print(f"Change: {latency['change_absolute']:+.3f}ms ({arrow}{abs(latency['change_percent']):.2f}% {word})")
+        print(f"Change (ms): {latency['change_absolute']:+.3f} ({arrow}{abs(latency['change_percent']):.2f}% {word})")
         print(f"Status: {latency['status']}")
         print()
         
@@ -1307,11 +1259,11 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
         cost = metrics['llm_cost']
         change_symbol = '→' if cost['change_absolute'] == 0 else ('↓' if cost['change_absolute'] < 0 else '↑')
         print(f"3. LLM Cost Metric")
-        print(f"Today's Total Cost: ${cost['today']:.4f}")
-        print(f"Yesterday's Total Cost: ${cost['yesterday']:.4f}")
+        print(f"Today's Total Cost ($): {cost['today']:.4f}")
+        print(f"Yesterday's Total Cost ($): {cost['yesterday']:.4f}")
         arrow = change_symbol
         word = 'no change' if cost['change_absolute'] == 0 else ('decrease' if cost['change_absolute'] < 0 else 'increase')
-        print(f"Change: ${cost['change_absolute']:+.4f} ({arrow}{abs(cost['change_percent']):.2f}% {word})")
+        print(f"Change ($): {cost['change_absolute']:+.4f} ({arrow}{abs(cost['change_percent']):.2f}% {word})")
         print(f"Status: {cost['status']}")
         print()
         
@@ -1319,11 +1271,11 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
         reliability = metrics['reliability']
         change_symbol = '→' if reliability['change_absolute'] == 0 else ('↓' if reliability['change_absolute'] < 0 else '↑')
         print(f"4. Reliability Metric")
-        print(f"Today's Success Rate: {reliability['today']:.2f}%")
-        print(f"Yesterday's Success Rate: {reliability['yesterday']:.2f}%")
+        print(f"Today's Success Rate (%): {reliability['today']:.2f}")
+        print(f"Yesterday's Success Rate (%): {reliability['yesterday']:.2f}")
         arrow = change_symbol
         word = 'no change' if reliability['change_absolute'] == 0 else ('improvement' if reliability['change_absolute'] > 0 else 'degradation')
-        print(f"Change: {reliability['change_absolute']:+.2f}% ({arrow}{abs(reliability['change_percent']):.2f}% {word})")
+        print(f"Change (%): {reliability['change_absolute']:+.2f} ({arrow}{abs(reliability['change_percent']):.2f}% {word})")
         print(f"Status: {reliability['status']}")
         print()
         
@@ -1386,14 +1338,14 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                 cost = metrics['llm_cost']
                 change_symbol = "↓" if cost['change_absolute'] < 0 else "↑"
                 f.write(f"3. LLM Cost Metric\n")
-                f.write(f"Today's Total Cost: ${cost['today']:.2f}\n")
-                f.write(f"Yesterday's Total Cost: ${cost['yesterday']:.2f}\n")
+                f.write(f"Today's Total Cost ($): {cost['today']:.2f}\n")
+                f.write(f"Yesterday's Total Cost ($): {cost['yesterday']:.2f}\n")
                 if cost['change_absolute'] == 0:
                     arrow = '→'; word = 'no change'
                 else:
                     arrow = '↓' if cost['change_absolute'] < 0 else '↑'
                     word = 'decrease' if cost['change_absolute'] < 0 else 'increase'
-                f.write(f"Change: ${cost['change_absolute']:+.2f} ({arrow}{abs(cost['change_percent']):.1f}% {word})\n")
+                f.write(f"Change ($): {cost['change_absolute']:+.2f} ({arrow}{abs(cost['change_percent']):.1f}% {word})\n")
                 f.write(f"Status: {cost['status']}\n\n")
                 
                 # 4. Reliability Metric
@@ -1473,11 +1425,11 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                     cost = metrics['llm_cost']
                     change_symbol = '→' if cost['change_absolute'] == 0 else ('↓' if cost['change_absolute'] < 0 else '↑')
                     f.write(f"3. LLM Cost Metric\n")
-                    f.write(f"Today's Total Cost: ${cost['today']:.4f}\n")
-                    f.write(f"Yesterday's Total Cost: ${cost['yesterday']:.4f}\n")
+                    f.write(f"Today's Total Cost ($): {cost['today']:.4f}\n")
+                    f.write(f"Yesterday's Total Cost ($): {cost['yesterday']:.4f}\n")
                     arrow = change_symbol
                     word = 'no change' if cost['change_absolute'] == 0 else ('decrease' if cost['change_absolute'] < 0 else 'increase')
-                    f.write(f"Change: ${cost['change_absolute']:+.4f} ({arrow}{abs(cost['change_percent']):.2f}% {word})\n")
+                    f.write(f"Change ($): {cost['change_absolute']:+.4f} ({arrow}{abs(cost['change_percent']):.2f}% {word})\n")
                     f.write(f"Status: {cost['status']}\n\n")
                     
                     # 4. Reliability Metric (raw percent)
@@ -1565,11 +1517,11 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                     f.write(f"Response Time Metrics:\n")
                     f.write(f"{'Metric':<25} {'Value':<15}\n")
                     f.write(f"{'-'*40}\n")
-                    f.write(f"{'Avg Time Taken':<25} {rt['mean']:.2f} s\n")
-                    f.write(f"{'Min Time Taken':<25} {rt['min']:.2f} s\n")
-                    f.write(f"{'Max Time Taken':<25} {rt['max']:.2f} s\n")
-                    f.write(f"{'Median Time':<25} {rt['median']:.2f} s\n")
-                    f.write(f"{'Std Deviation':<25} {rt['std']:.2f} s\n")
+                    f.write(f"{'Avg Time Taken (s)':<25} {rt['mean']:.2f}\n")
+                    f.write(f"{'Min Time Taken (s)':<25} {rt['min']:.2f}\n")
+                    f.write(f"{'Max Time Taken (s)':<25} {rt['max']:.2f}\n")
+                    f.write(f"{'Median Time (s)':<25} {rt['median']:.2f}\n")
+                    f.write(f"{'Std Deviation (s)':<25} {rt['std']:.2f}\n")
                     f.write(f"{'Records Analyzed':<25} {rt['count']:,}\n")
                     f.write(f"\n")
                 else:
@@ -1581,11 +1533,11 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                     f.write(f"LLM Cost Metrics:\n")
                     f.write(f"{'Metric':<25} {'Value':<15}\n")
                     f.write(f"{'-'*40}\n")
-                    f.write(f"{'Avg LLM Cost':<25} ${cost['mean']:.4f}\n")
-                    f.write(f"{'Min LLM Cost':<25} ${cost['min']:.4f}\n")
-                    f.write(f"{'Max LLM Cost':<25} ${cost['max']:.4f}\n")
-                    f.write(f"{'Total LLM Cost':<25} ${cost['total']:.2f}\n")
-                    f.write(f"{'Median Cost':<25} ${cost['median']:.4f}\n")
+                    f.write(f"{'Avg LLM Cost ($)':<25} {cost['mean']:.4f}\n")
+                    f.write(f"{'Min LLM Cost ($)':<25} {cost['min']:.4f}\n")
+                    f.write(f"{'Max LLM Cost ($)':<25} {cost['max']:.4f}\n")
+                    f.write(f"{'Total LLM Cost ($)':<25} {cost['total']:.2f}\n")
+                    f.write(f"{'Median Cost ($)':<25} {cost['median']:.4f}\n")
                     f.write(f"{'Records with Cost':<25} {cost['count']:,}\n")
                     f.write(f"\n")
                 else:
@@ -1651,10 +1603,10 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                         total = err + info
                         failure_pct = row.get('failure_pct', 0.0)
                         overall_err += err; overall_info += info
-                        f.write(f"{mode:<6} {name:<24} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}%\n")
+                        f.write(f"{mode:<6} {name:<24} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
                     overall_total = overall_err + overall_info
                     overall_pct = (overall_err / overall_total * 100) if overall_total else 0
-                    f.write(f"{'—':<6} {'Overall':<24} {overall_err:>8} {overall_info:>16} {overall_total:>8} {overall_pct:>9.2f}%\n\n")
+                    f.write(f"{'—':<6} {'Overall':<24} {overall_err:>8} {overall_info:>16} {overall_total:>8} {overall_pct:>9.2f}\n\n")
 
                 # Process-wise failure table
                 if 'failure_by_process' in metrics and metrics['failure_by_process']:
@@ -1665,7 +1617,7 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                     for row in metrics['failure_by_process']:
                         err = int(row.get('error', 0)); info = int(row.get('info', 0)); total = err + info
                         failure_pct = (err / total * 100) if total else 0
-                        f.write(f"{str(row.get(self.column_mappings.get('process_name'), row.get('process_name',''))):<40} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}%\n")
+                        f.write(f"{str(row.get(self.column_mappings.get('process_name'), row.get('process_name',''))):<40} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
                     f.write("\n")
 
                 # Process x Mode combined tables (if present)
@@ -1699,7 +1651,7 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                     for row in metrics['failure_by_process_mode']:
                         err = int(row.get('error', 0)); info = int(row.get('info', 0)); total = err + info
                         failure_pct = (err / total * 100) if total else 0
-                        f.write(f"{str(row.get(self.column_mappings.get('process_name'), '')):<40} {int(row.get('effective_mode', -1)):>6} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}%\n")
+                        f.write(f"{str(row.get(self.column_mappings.get('process_name'), '')):<40} {int(row.get('effective_mode', -1)):>6} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
                     f.write("\n")
                     f.write(f"LLM COST BY EFFECTIVE MODE\n")
                     f.write(f"=" * 25 + "\n")
@@ -1733,22 +1685,7 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                 else:
                     f.write(f"Status analysis not available (no status column found)\n\n")
                 
-                # Error Categories (NEW)
-                if 'error_categories' in metrics and metrics['error_categories']:
-                    f.write(f"ERROR TYPE CATEGORIES\n")
-                    f.write(f"=" * 25 + "\n")
-                    f.write(f"{'Error Category':<35} {'Count':<8}\n")
-                    f.write(f"{'-'*43}\n")
-                    
-                    for category, count in metrics['error_categories'].items():
-                        f.write(f"{category:<35} {count:<8}\n")
-                    
-                    f.write(f"\n")
-                    f.write(f"Total error categories: {len(metrics['error_categories'])}\n")
-                    f.write(f"Total categorized errors: {sum(metrics['error_categories'].values())}\n")
-                    f.write(f"\n")
-                
-                # Detailed Error Breakdown
+                # 1) DETAILED ERROR BREAKDOWN (Error Messages vs Count) - FIRST
                 if 'error_breakdown' in metrics and metrics['error_breakdown']:
                     f.write(f"DETAILED ERROR BREAKDOWN\n")
                     f.write(f"=" * 30 + "\n")
@@ -1763,6 +1700,31 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
                     f.write(f"\n")
                     f.write(f"Total unique error messages: {len(metrics['error_breakdown'])}\n")
                     f.write(f"Total error occurrences: {sum(metrics['error_breakdown'].values())}\n")
+                    f.write(f"\n")
+                
+                # 2) ERROR MESSAGE TO CATEGORY MAPPING - SECOND
+                if 'error_message_categories' in metrics and metrics['error_message_categories']:
+                    f.write(f"ERROR MESSAGE TO CATEGORY MAPPING\n")
+                    f.write(f"=" * 35 + "\n")
+                    
+                    for error_msg, category in metrics['error_message_categories'].items():
+                        f.write(f"{category} |=>| {error_msg}\n")
+                    
+                    f.write(f"\n")
+                
+                # 3) ERROR TYPE CATEGORIES (Error Categories vs Count) - LAST
+                if 'error_categories' in metrics and metrics['error_categories']:
+                    f.write(f"ERROR TYPE CATEGORIES\n")
+                    f.write(f"=" * 25 + "\n")
+                    f.write(f"{'Error Category':<35} {'Count':<8}\n")
+                    f.write(f"{'-'*43}\n")
+                    
+                    for category, count in metrics['error_categories'].items():
+                        f.write(f"{category:<35} {count:<8}\n")
+                    
+                    f.write(f"\n")
+                    f.write(f"Total error categories: {len(metrics['error_categories'])}\n")
+                    f.write(f"Total categorized errors: {sum(metrics['error_categories'].values())}\n")
                     f.write(f"\n")
                 
                 # Charts Information
@@ -1824,13 +1786,20 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
         if not self.create_response_time_charts():
             print("⚠️  Failed to create response time charts; continuing")
         
+        # Step 5b: Create error categorization chart (non-fatal)
+        if not self.create_error_categorization_chart():
+            print("⚠️  Failed to create error categorization chart; continuing")
+        
         # Step 6: Save metrics to TXT (non-fatal)
         if not self.save_metrics_to_txt(metrics):
             print("⚠️  Failed to save metrics; continuing")
         
-        # Step 7: Generate daily analysis (non-fatal)
-        if not self.generate_daily_analysis():
-            print("⚠️  Failed to generate daily analysis; continuing")
+        # Step 7: Generate daily analysis ONLY if compare_dates provided (non-fatal)
+        if self.compare_dates:
+            if not self.generate_daily_analysis():
+                print("⚠️  Failed to generate daily analysis; continuing")
+        else:
+            print("📅 Skipping daily analysis (no date comparison requested)")
 
         print(f"\n✅ ANALYSIS COMPLETED SUCCESSFULLY!")
         print(f"📁 All outputs saved in: {self.output_dir}")
@@ -1840,8 +1809,10 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
         print(f"   - response_time_analysis.png (Comprehensive RT Analysis)")
         print(f"   - response_time_percentiles.png (RT Percentiles Summary)")
         print(f"   - daily_response_time_range.png (Daily Min/Max/Avg Chart)")
+        print(f"   - error_categories_chart.png (Error Categories Distribution)")
         print(f"   - metrics_analysis.txt (Complete metrics)")
-        print(f"   - daily_analysis.txt (Day-over-Day Analysis with 5 Key Metrics)")
+        if self.compare_dates:
+            print(f"   - daily_analysis.txt (Day-over-Day Analysis with 5 Key Metrics)")
         
         return True
 
@@ -1901,6 +1872,89 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
             traceback.print_exc()
             return False
 
+    def create_error_categorization_chart(self) -> bool:
+        """Create error categorization chart using LLM service"""
+        try:
+            # Check if we have error data
+            status_col = self.column_mappings.get('status')
+            message_col = self.column_mappings.get('message')
+            
+            if not status_col or not message_col:
+                print("⚠️ No status or message column found for error categorization")
+                return True  # Not an error, just skip
+            
+            # Get error messages
+            error_df = self.df[self.df[status_col].str.lower() == 'error']
+            if error_df.empty:
+                print("⚠️ No error records found for categorization")
+                return True  # Not an error, just skip
+            
+            error_messages = error_df[message_col].dropna().unique().tolist()
+            if not error_messages:
+                print("⚠️ No error messages found for categorization")
+                return True  # Not an error, just skip
+            
+            print(f"🔍 Categorizing {len(error_messages)} unique error messages...")
+            
+            # Use LLM service to categorize errors
+            error_categories = llm_service.categorize_errors_batch(error_messages)
+            
+            if not error_categories:
+                print("⚠️ No error categories found")
+                return True  # Not an error, just skip
+            
+            # Create the chart
+            fig, ax = plt.subplots(figsize=(14, 10))
+            
+            # Prepare data for plotting
+            categories = list(error_categories.keys())
+            counts = list(error_categories.values())
+            
+            # Sort by count (descending) for better visualization
+            sorted_data = sorted(zip(categories, counts), key=lambda x: x[1], reverse=True)
+            categories, counts = zip(*sorted_data)
+            
+            # Create horizontal bar chart
+            bars = ax.barh(range(len(categories)), counts, color=plt.cm.Set3(np.linspace(0, 1, len(categories))))
+            
+            # Customize the chart
+            ax.set_yticks(range(len(categories)))
+            ax.set_yticklabels(categories, fontsize=10)
+            ax.set_xlabel('Error Count', fontsize=12, fontweight='bold')
+            ax.set_title('Error Categories Distribution', fontsize=14, fontweight='bold', pad=20)
+            
+            # Format x-axis to show whole numbers only
+            ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{int(x)}'))
+            ax.set_xticks(range(0, max(counts) + 1, max(1, max(counts) // 10 + 1)))
+            
+            # Add value labels on bars
+            for i, (bar, count) in enumerate(zip(bars, counts)):
+                ax.text(bar.get_width() + max(counts) * 0.01, bar.get_y() + bar.get_height()/2, 
+                       str(count), va='center', ha='left', fontsize=9, fontweight='bold')
+            
+            # Add grid for better readability
+            ax.grid(axis='x', alpha=0.3, linestyle='--')
+            ax.set_axisbelow(True)
+            
+            # Invert y-axis to show highest counts at top
+            ax.invert_yaxis()
+            
+            # Adjust layout
+            plt.tight_layout()
+            
+            # Save the chart
+            chart_path = os.path.join(self.output_dir, 'error_categories_chart.png')
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"✅ Error categorization chart saved: {chart_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error creating error categorization chart: {e}")
+            traceback.print_exc()
+            return False
+
         # Step 4b: Create mode-wise DAU chart if effective_mode exists
         if 'effective_mode' in self.df.columns:
             if not self.create_mode_wise_dau_chart():
@@ -1929,8 +1983,10 @@ Most Variable Day: {max_range_idx.strftime('%m-%d')}"""
         print(f"   - response_time_analysis.png (Comprehensive RT Analysis)")
         print(f"   - response_time_percentiles.png (RT Percentiles Summary)")
         print(f"   - daily_response_time_range.png (Daily Min/Max/Avg Chart)")
+        print(f"   - error_categories_chart.png (Error Categories Distribution)")
         print(f"   - metrics_analysis.txt (Complete metrics)")
-        print(f"   - daily_analysis.txt (Day-over-Day Analysis with 5 Key Metrics)")
+        if self.compare_dates:
+            print(f"   - daily_analysis.txt (Day-over-Day Analysis with 5 Key Metrics)")
         
         return True
 
