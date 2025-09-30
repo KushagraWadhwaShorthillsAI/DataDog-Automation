@@ -20,7 +20,7 @@ import traceback
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data_loaders import load_data_from_file
+from data_loaders import load_data_from_file, convert_csv_to_xlsx
 from llm_service import llm_service
 
 
@@ -130,6 +130,15 @@ class SimpleIndividualAnalyzer:
     def load_and_detect_columns(self) -> bool:
         """Load data and detect column mappings"""
         try:
+            # Check if file is CSV and convert to XLSX first
+            if self.file_extension == '.csv':
+                print(f"🔄 CSV file detected, converting to XLSX first...")
+                xlsx_path = convert_csv_to_xlsx(self.file_path)
+                self.file_path = xlsx_path
+                self.file_name = os.path.basename(xlsx_path).split('.')[0]
+                self.file_extension = '.xlsx'
+                print(f"✅ Conversion complete, proceeding with XLSX file")
+            
             print(f"Loading {self.file_extension} file: {self.file_name}")
             self.df = load_data_from_file(self.file_path)
             
@@ -321,8 +330,17 @@ class SimpleIndividualAnalyzer:
             # Status analysis from PREPROCESSED data
             status_col = self.column_mappings.get('status')
             if status_col and status_col in self.df.columns:
-                # Count from preprocessed data
-                processed_status_counts = self.df[status_col].str.lower().value_counts()
+                # Handle both string and numeric status values
+                status_series = self.df[status_col]
+                
+                # Convert to string and then to lowercase for consistent processing
+                if status_series.dtype == 'object':
+                    # Already string values
+                    processed_status_counts = status_series.str.lower().value_counts()
+                else:
+                    # Numeric values - convert to string first
+                    processed_status_counts = status_series.astype(str).str.lower().value_counts()
+                
                 processed_success = processed_status_counts.get('info', 0)
                 processed_errors = processed_status_counts.get('error', 0)
                 
@@ -349,7 +367,9 @@ class SimpleIndividualAnalyzer:
                     message_col = self.column_mappings['message']
                     
                     # STEP 1: Filter rows where status = 'error'
-                    error_rows = self.df[self.df[status_col].str.lower() == 'error']
+                    # Handle both string and numeric status values
+                    status_series = self.df[status_col].astype(str).str.lower()
+                    error_rows = self.df[status_series == 'error']
                     print(f"  Found {len(error_rows)} rows with status='error'")
                     
                     if not error_rows.empty and message_col in error_rows.columns:
@@ -971,7 +991,7 @@ class SimpleIndividualAnalyzer:
                 if requested is None:
                     print("❌ Requested compare dates not found in data")
                     return False
-                yesterday, today = requested
+                today, yesterday = requested
             elif len(dates) >= 2:
                 # Fallback: last two days
                 yesterday, today = dates[-2], dates[-1]
@@ -1035,7 +1055,7 @@ class SimpleIndividualAnalyzer:
             y = normalize(compare_dates[0])
             t = normalize(compare_dates[1])
             if y and t:
-                return (y, t)
+                return (t, y)  # Return (today, yesterday) - second date is more recent
             return None
         except Exception:
             return None
@@ -1083,7 +1103,9 @@ class SimpleIndividualAnalyzer:
             # 4. Reliability Metric (Success Rate)
             if status_col and status_col in day_data.columns:
                 total_records = len(day_data)
-                success_records = len(day_data[day_data[status_col].str.lower() == 'info'])
+                # Handle both string and numeric status values
+                status_series = day_data[status_col].astype(str).str.lower()
+                success_records = len(day_data[status_series == 'info'])
                 metrics['success_rate'] = (success_records / total_records * 100) if total_records > 0 else 0
             
             # 5. User Activity Metric (Unique Users)
@@ -1296,7 +1318,15 @@ class SimpleIndividualAnalyzer:
     def _save_single_daily_analysis(self, analysis: Dict):
         """Save single daily analysis result to file"""
         try:
-            daily_analysis_path = f"{self.output_dir}/daily_analysis.txt"
+            # Create filename with date comparison if available
+            if self.compare_dates:
+                date1, date2 = self.compare_dates
+                # Clean dates for filename (replace / with -)
+                clean_date1 = date1.replace('/', '-')
+                clean_date2 = date2.replace('/', '-')
+                daily_analysis_path = f"{self.output_dir}/daily_analysis_{clean_date1}_vs_{clean_date2}.txt"
+            else:
+                daily_analysis_path = f"{self.output_dir}/daily_analysis.txt"
             
             with open(daily_analysis_path, 'w', encoding='utf-8') as f:
                 metrics = analysis['metrics']
@@ -1884,7 +1914,9 @@ class SimpleIndividualAnalyzer:
                 return True  # Not an error, just skip
             
             # Get error messages
-            error_df = self.df[self.df[status_col].str.lower() == 'error']
+            # Handle both string and numeric status values
+            status_series = self.df[status_col].astype(str).str.lower()
+            error_df = self.df[status_series == 'error']
             if error_df.empty:
                 print("⚠️ No error records found for categorization")
                 return True  # Not an error, just skip
@@ -1997,7 +2029,7 @@ def analyze_file(file_path: str, compare: Optional[Tuple[str, str]] = None) -> b
     return analyzer.run_analysis()
 
 
-def analyze_all_source_files():
+def analyze_all_source_files(compare: Optional[Tuple[str, str]] = None):
     """Analyze all files in source_data directory"""
     source_dir = "/Users/shtlpmac027/Documents/DataDog/source_data"
     
@@ -2005,19 +2037,21 @@ def analyze_all_source_files():
         print(f"❌ Source directory not found: {source_dir}")
         return
     
-    # Find Excel files
-    excel_files = []
+    # Find Excel and CSV files
+    data_files = []
     for file in os.listdir(source_dir):
-        if file.endswith(('.xlsx', '.xls')):
-            excel_files.append(os.path.join(source_dir, file))
+        if file.endswith(('.xlsx', '.xls', '.csv')):
+            data_files.append(os.path.join(source_dir, file))
     
-    if not excel_files:
-        print(f"❌ No Excel files found in {source_dir}")
+    if not data_files:
+        print(f"❌ No data files found in {source_dir}")
         return
     
-    print(f"Found {len(excel_files)} Excel files to analyze:")
-    for file in excel_files:
-        print(f"  - {os.path.basename(file)}")
+    print(f"Found {len(data_files)} data files to analyze:")
+    for file in data_files:
+        file_ext = os.path.splitext(file)[1].lower()
+        file_type = "CSV" if file_ext == '.csv' else "Excel"
+        print(f"  - {os.path.basename(file)} ({file_type})")
     
     print(f"\n" + "=" * 80)
     print(f"STARTING INDIVIDUAL ANALYSIS FOR ALL FILES")
@@ -2026,13 +2060,15 @@ def analyze_all_source_files():
     successful = []
     failed = []
     
-    for i, file_path in enumerate(excel_files, 1):
+    for i, file_path in enumerate(data_files, 1):
         file_name = os.path.basename(file_path)
-        print(f"\n🔄 Analyzing file {i}/{len(excel_files)}: {file_name}")
+        file_ext = os.path.splitext(file_path)[1].lower()
+        file_type = "CSV" if file_ext == '.csv' else "Excel"
+        print(f"\n🔄 Analyzing file {i}/{len(data_files)}: {file_name} ({file_type})")
         print("-" * 60)
         
         try:
-            if analyze_file(file_path):
+            if analyze_file(file_path, compare):
                 successful.append(file_name)
                 print(f"✅ Successfully analyzed: {file_name}")
             else:
@@ -2090,4 +2126,4 @@ if __name__ == "__main__":
         else:
             print(f"❌ File not found: {file_path}")
     else:
-        analyze_all_source_files()
+        analyze_all_source_files(compare_tuple)

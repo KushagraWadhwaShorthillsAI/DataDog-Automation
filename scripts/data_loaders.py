@@ -8,6 +8,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union
 import os
+from pathlib import Path
 
 
 class BaseDataLoader(ABC):
@@ -160,6 +161,42 @@ class ParquetDataLoader(BaseDataLoader):
             return df
         except Exception as e:
             raise Exception(f"Failed to load Parquet file: {e}")
+
+
+def convert_csv_to_xlsx(csv_path: str, xlsx_path: str = None) -> str:
+    """
+    Convert CSV file to XLSX format.
+    
+    Args:
+        csv_path: Path to input CSV file
+        xlsx_path: Path to output XLSX file (if None, creates in same directory)
+        
+    Returns:
+        Path to the converted XLSX file
+    """
+    try:
+        # Read CSV file
+        print(f"📄 Reading CSV file: {csv_path}")
+        df = pd.read_csv(csv_path)
+        
+        # Generate output path if not provided
+        if xlsx_path is None:
+            csv_path_obj = Path(csv_path)
+            xlsx_path = csv_path_obj.parent / f"{csv_path_obj.stem}.xlsx"
+        
+        # Write to XLSX
+        print(f"💾 Converting to XLSX: {xlsx_path}")
+        df.to_excel(xlsx_path, index=False, engine='openpyxl')
+        
+        print(f"✅ CSV to XLSX conversion successful!")
+        print(f"   Input:  {csv_path} ({df.shape[0]} rows, {df.shape[1]} columns)")
+        print(f"   Output: {xlsx_path}")
+        
+        return str(xlsx_path)
+        
+    except Exception as e:
+        print(f"❌ Error converting CSV to XLSX: {e}")
+        raise
 
 
 class DataLoaderFactory:

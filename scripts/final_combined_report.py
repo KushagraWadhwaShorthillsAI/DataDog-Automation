@@ -19,7 +19,7 @@ import textwrap
 
 # Explicitly import the engine for writing to Excel files for clarity
 import openpyxl
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Font, Border, Side, PatternFill
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
@@ -554,10 +554,10 @@ class FinalPolishedCombinedReport:
             df.to_excel(writer, sheet_name='Response Times', index=False)
             ws = writer.sheets['Response Times']
             
-            # Header formatting
-            for cell in ws[1]:
-                cell.alignment = Alignment(horizontal='left')
-                cell.font = Font(bold=True)
+            # Apply enhanced header styling
+            self._apply_header_styling(ws, 1, 1, 7)
+            # Apply borders to the entire table
+            self._apply_table_borders(ws, 1, len(df) + 1, 1, 7)
             
             # Right-align numeric columns and format
             for row in ws.iter_rows(min_row=2, min_col=2, max_col=7):
@@ -627,8 +627,12 @@ class FinalPolishedCombinedReport:
             ])
             df.to_excel(writer, sheet_name='LLM Costs', index=False)
             ws = writer.sheets['LLM Costs']
-            for cell in ws[1]:
-                cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+            
+            # Apply enhanced header styling
+            self._apply_header_styling(ws, 1, 1, 6)
+            # Apply borders to the entire table
+            self._apply_table_borders(ws, 1, len(df) + 1, 1, 6)
+            
             # Right-align numeric columns and apply number format without currency symbol
             for row in ws.iter_rows(min_row=2, min_col=2, max_col=6):
                 for cell in row:
@@ -823,9 +827,12 @@ class FinalPolishedCombinedReport:
             self._service_sheet_names.append(ws.title)
 
             current_row = 1
-            # Title
+            # Title with enhanced styling
             title_cell = ws.cell(row=current_row, column=1, value=f"Service: {file_name}")
-            title_cell.font = Font(bold=True, size=14)
+            title_cell.font = Font(bold=True, size=16, color='2F4F4F')
+            title_cell.alignment = Alignment(horizontal='center')
+            # Add background color to title
+            title_cell.fill = PatternFill(start_color='F0F8FF', end_color='F0F8FF', fill_type='solid')
             current_row += 2
 
             # Separate, neat tables: Success/Error, LLM Cost, Error Categories, Error Messages, then Charts
@@ -848,8 +855,11 @@ class FinalPolishedCombinedReport:
             ], columns=['Metric', 'Value'])
             success_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
             header_row = current_row
-            for cell in ws[header_row]:
-                cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+            # Apply enhanced header styling
+            self._apply_header_styling(ws, header_row, 1, 2)
+            # Apply borders to the table
+            self._apply_table_borders(ws, header_row, header_row + len(success_df), 1, 2)
+            
             for r in range(header_row + 1, header_row + 1 + len(success_df)):
                 vcell = ws.cell(row=r, column=2)
                 if isinstance(vcell.value, (int, float)):
@@ -858,10 +868,6 @@ class FinalPolishedCombinedReport:
             ws.cell(row=header_row + 4, column=2).number_format = '0.00%'
             ws.cell(row=header_row + 5, column=2).number_format = '0.00%'
             succ_last = header_row + len(success_df)
-            succ_ref = f"A{header_row}:B{succ_last}"
-            succ_table = Table(displayName=f"T_Success_{ws.title.replace(' ', '_')}", ref=succ_ref)
-            succ_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight8', showRowStripes=True)
-            ws.add_table(succ_table)
             current_row = succ_last + 2
 
             # 2) LLM Cost table
@@ -880,17 +886,16 @@ class FinalPolishedCombinedReport:
                 ], columns=['Metric', 'Value'])
                 llm_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
                 header_row = current_row
-                for cell in ws[header_row]:
-                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+                # Apply enhanced header styling
+                self._apply_header_styling(ws, header_row, 1, 2)
+                # Apply borders to the table
+                self._apply_table_borders(ws, header_row, header_row + len(llm_df), 1, 2)
+                
                 for r in range(header_row + 1, header_row + 1 + len(llm_df)):
                     v = ws.cell(row=r, column=2)
                     v.alignment = Alignment(horizontal='right')
                     v.number_format = '#,##0.0000'
                 llm_last = header_row + len(llm_df)
-                llm_ref = f"A{header_row}:B{llm_last}"
-                llm_table = Table(displayName=f"T_LLM_{ws.title.replace(' ', '_')}", ref=llm_ref)
-                llm_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight9', showRowStripes=True)
-                ws.add_table(llm_table)
                 current_row = llm_last + 2
 
             # 3) Response Time table
@@ -910,17 +915,16 @@ class FinalPolishedCombinedReport:
                 ], columns=['Metric', 'Value'])
                 rt_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
                 header_row = current_row
-                for cell in ws[header_row]:
-                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
+                # Apply enhanced header styling
+                self._apply_header_styling(ws, header_row, 1, 2)
+                # Apply borders to the table
+                self._apply_table_borders(ws, header_row, header_row + len(rt_df), 1, 2)
+                
                 for r in range(header_row + 1, header_row + 1 + len(rt_df)):
                     v = ws.cell(row=r, column=2)
                     v.alignment = Alignment(horizontal='right')
                     v.number_format = '0.00'
                 rt_last = header_row + len(rt_df)
-                rt_ref = f"A{header_row}:B{rt_last}"
-                rt_table = Table(displayName=f"T_RT_{ws.title.replace(' ', '_')}", ref=rt_ref)
-                rt_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight10', showRowStripes=True)
-                ws.add_table(rt_table)
                 current_row = rt_last + 2
 
             # 4) Mode-wise and Process-wise tables when available
@@ -1127,56 +1131,7 @@ class FinalPolishedCombinedReport:
                 df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
                 current_row += len(df) + 2
 
-            # 3) Error Messages table (with derived Category column) - FIRST as per convention
-            msgs = data['metrics'].get('error_messages', {})
-            if msgs:
-                ws.cell(row=current_row, column=1, value='Error Messages').font = Font(bold=True)
-                current_row += 1
-                rows = []
-                # Use pre-categorized mapping from individual analysis for consistency
-                message_categories = data['metrics'].get('error_message_categories', {})
-                for m, n in msgs.items():
-                    # Use pre-categorized mapping if available, otherwise fall back to LLM service
-                    cat = message_categories.get(m, self._categorize_error_message(m))
-                    display_msg = m if len(m) <= 300 else m[:300]+"..."
-                    rows.append([cat, display_msg, n])
-                msg_df = pd.DataFrame(rows, columns=['Error Category', 'Error Message', 'Count'])
-                # Sort by category then count desc
-                msg_df.sort_values(by=['Error Category', 'Count'], ascending=[True, False], inplace=True)
-                msg_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
-                msg_header = current_row
-                for cell in ws[msg_header]:
-                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
-                # Right-align counts (third column)
-                for r in range(msg_header + 1, msg_header + 1 + len(msg_df)):
-                    ws.cell(row=r, column=3).alignment = Alignment(horizontal='right')
-                msg_last_row = msg_header + len(msg_df)
-                msg_ref = f"A{msg_header}:C{msg_last_row}"
-                msg_table = Table(displayName=f"T_ErrMsgs_{ws.title.replace(' ', '_')}", ref=msg_ref)
-                msg_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight9', showRowStripes=True)
-                ws.add_table(msg_table)
-                current_row = msg_last_row + 2
-
-            # 4) Error Categories table - SECOND as per convention
-            cats = data['metrics'].get('error_categories', {})
-            if cats:
-                ws.cell(row=current_row, column=1, value='Error Categories').font = Font(bold=True)
-                current_row += 1
-                cat_df = pd.DataFrame([[c, n] for c, n in cats.items()], columns=['Error Category', 'Count'])
-                cat_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
-                cat_header = current_row
-                for cell in ws[cat_header]:
-                    cell.alignment = Alignment(horizontal='left'); cell.font = Font(bold=True)
-                for r in range(cat_header + 1, cat_header + 1 + len(cat_df)):
-                    ws.cell(row=r, column=2).alignment = Alignment(horizontal='right')
-                cat_last_row = cat_header + len(cat_df)
-                cat_ref = f"A{cat_header}:B{cat_last_row}"
-                cat_table = Table(displayName=f"T_ErrCats_{ws.title.replace(' ', '_')}", ref=cat_ref)
-                cat_table.tableStyleInfo = TableStyleInfo(name='TableStyleLight11', showRowStripes=True)
-                ws.add_table(cat_table)
-                current_row = cat_last_row + 2
-
-            # 5) Charts block
+            # 3) Charts block
             charts = data.get('charts', {})
             ordered = [
                 'dauu_chart.png',
@@ -1198,16 +1153,68 @@ class FinalPolishedCombinedReport:
                         ws.cell(row=current_row, column=1, value=f"[Image not found: {charts[chart_file]}]")
                         current_row += 2
 
+            # 4) Error Messages table (with derived Category column) - AFTER CHARTS
+            msgs = data['metrics'].get('error_messages', {})
+            if msgs:
+                ws.cell(row=current_row, column=1, value='Error Messages').font = Font(bold=True, size=12)
+                current_row += 1
+                rows = []
+                # Use pre-categorized mapping from individual analysis for consistency
+                message_categories = data['metrics'].get('error_message_categories', {})
+                for m, n in msgs.items():
+                    # Use pre-categorized mapping if available, otherwise fall back to LLM service
+                    cat = message_categories.get(m, self._categorize_error_message(m))
+                    display_msg = m if len(m) <= 300 else m[:300]+"..."
+                    rows.append([cat, display_msg, n])
+                msg_df = pd.DataFrame(rows, columns=['Error Category', 'Error Message', 'Count'])
+                # Sort by category then count desc
+                msg_df.sort_values(by=['Error Category', 'Count'], ascending=[True, False], inplace=True)
+                msg_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
+                msg_header = current_row
+                # Apply enhanced header styling
+                self._apply_header_styling(ws, msg_header, 1, 3)
+                # Apply borders to the table
+                self._apply_table_borders(ws, msg_header, msg_header + len(msg_df), 1, 3)
+                
+                # Right-align counts (third column)
+                for r in range(msg_header + 1, msg_header + 1 + len(msg_df)):
+                    ws.cell(row=r, column=3).alignment = Alignment(horizontal='right')
+                current_row = msg_header + len(msg_df) + 2
+
+            # 5) Error Categories table - AFTER CHARTS
+            cats = data['metrics'].get('error_categories', {})
+            if cats:
+                ws.cell(row=current_row, column=1, value='Error Categories').font = Font(bold=True, size=12)
+                current_row += 1
+                cat_df = pd.DataFrame([[c, n] for c, n in cats.items()], columns=['Error Category', 'Count'])
+                cat_df.to_excel(writer, sheet_name=ws.title, startrow=current_row-1, index=False)
+                cat_header = current_row
+                # Apply enhanced header styling
+                self._apply_header_styling(ws, cat_header, 1, 2)
+                # Apply borders to the table
+                self._apply_table_borders(ws, cat_header, cat_header + len(cat_df), 1, 2)
+                
+                for r in range(cat_header + 1, cat_header + 1 + len(cat_df)):
+                    ws.cell(row=r, column=2).alignment = Alignment(horizontal='right')
+                current_row = cat_header + len(cat_df) + 2
+
     # Removed By Service Overview as per request
 
     # Removed By Service Errors as per request
 
     def _create_index_sheet(self, writer):
         wb = writer.book
-        # Create or get 'Index'
-        ws = wb.create_sheet('Index', 0)
-        ws.cell(row=1, column=1, value='Index')
-        ws.cell(row=2, column=1, value='Click to jump to sheet:')
+        # Create or get 'Link to other tabs'
+        ws = wb.create_sheet('Link to other tabs', 0)
+        
+        # Title styling
+        title_cell = ws.cell(row=1, column=1, value='Link to other tabs')
+        title_cell.font = Font(bold=True, size=16, color='2F4F4F')
+        title_cell.alignment = Alignment(horizontal='center')
+        
+        subtitle_cell = ws.cell(row=2, column=1, value='Click on any link below to jump to that sheet:')
+        subtitle_cell.font = Font(size=12, italic=True, color='696969')
+        
         sheets = [
             'Response Times', 'Success Rates', 'LLM Costs',
             'Error Categories', 'Detailed Error Messages', 'Charts'
@@ -1215,12 +1222,42 @@ class FinalPolishedCombinedReport:
         # Include per-service sheets if any
         if hasattr(self, '_service_sheet_names'):
             sheets.extend(self._service_sheet_names)
+        
         row = 4
         for name in sheets:
             if name in wb.sheetnames:
                 cell = ws.cell(row=row, column=1)
                 cell.value = f"=HYPERLINK(\"#'{name}'!A1\",\"{name}\")"
+                cell.font = Font(size=11, color='0066CC', underline='single')
+                cell.alignment = Alignment(horizontal='left')
                 row += 1
+        
+        # Auto-adjust column width
+        ws.column_dimensions['A'].width = 30
+
+    def _apply_table_borders(self, ws, start_row, end_row, start_col, end_col):
+        """Apply borders to a table range"""
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        for row in range(start_row, end_row + 1):
+            for col in range(start_col, end_col + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.border = thin_border
+
+    def _apply_header_styling(self, ws, row, start_col, end_col):
+        """Apply header styling to a row"""
+        header_fill = PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid')
+        
+        for col in range(start_col, end_col + 1):
+            cell = ws.cell(row=row, column=col)
+            cell.font = Font(bold=True, size=11)
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center')
 
     # --- ALL PDF GENERATION CODE REMAINS THE SAME AS THE PREVIOUS POLISHED VERSION ---
     def generate_pdf_report(self, all_data: Dict) -> bool:
