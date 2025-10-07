@@ -439,64 +439,83 @@ def create_index_sheet(wb, index_sheet):
     index_sheet.cell(row=row, column=1, value='Metric Definitions').font = Font(bold=True, size=14)
     row += 2
     
+    # Get sample dates from the first sheet name for the examples
+    sample_newer_date = "06-10"  # Default
+    sample_older_date = "03-10"  # Default
+    
+    # Try to extract dates from the first sheet name if available
+    if sorted_sheet_names:
+        first_sheet = sorted_sheet_names[0]
+        if first_sheet.startswith("Daily_Analysis_"):
+            parts = first_sheet.replace("Daily_Analysis_", "").split("_vs_")
+            if len(parts) == 2:
+                try:
+                    older_parts = parts[0].split("_")
+                    newer_parts = parts[1].split("_")
+                    if len(older_parts) == 2 and len(newer_parts) == 2:
+                        sample_older_date = f"{older_parts[0]}-{older_parts[1]}"
+                        sample_newer_date = f"{newer_parts[0]}-{newer_parts[1]}"
+                except:
+                    pass  # Use defaults if any error occurs
+    
     # 1. Latency Metric
     index_sheet.cell(row=row, column=1, value='1. Latency Metric').font = Font(bold=True)
     row += 1
-    index_sheet.cell(row=row, column=1, value="Definition: Measures the response time of the system in milliseconds. Lower values indicate better performance.")
+    index_sheet.cell(row=row, column=1, value="Definition: Shows the comparison of average response time between two dates in seconds.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="This metric tracks how quickly the system responds to user requests. Faster response times lead to better user experience.")
+    index_sheet.cell(row=row, column=1, value="Reveals how system performance has changed over time. A decrease in response time indicates improved performance.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Example: 03-10 Avg Response Time: 245ms, 02-10: 260ms, Change: -15ms (↓5.8% improvement)")
+    index_sheet.cell(row=row, column=1, value=f"Example: {sample_newer_date} Avg Response Time: 39.57s, {sample_older_date}: 38.98s, Change: +0.59s (↑1.5% increase)")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Status: IMPROVING (response time decreased), DEGRADING (increased), STABLE (minimal change)")
+    index_sheet.cell(row=row, column=1, value="Status: IMPROVING (response time decreased from older to newer date), DEGRADING (increased), STABLE (minimal change)")
     row += 2
     
     # 2. Throughput Metric
     index_sheet.cell(row=row, column=1, value='2. Throughput Metric').font = Font(bold=True)
     row += 1
-    index_sheet.cell(row=row, column=1, value="Definition: Measures the total number of requests processed by the system in a given time period.")
+    index_sheet.cell(row=row, column=1, value="Definition: Shows the comparison of total request volume between two dates.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="This metric indicates the system's workload and capacity. Higher throughput often indicates higher usage and demand.")
+    index_sheet.cell(row=row, column=1, value="Highlights changes in system usage and demand between the compared dates.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Example: 03-10 Total Requests: 1,247, 02-10: 1,156, Change: +91 requests (↑7.9% increase)")
+    index_sheet.cell(row=row, column=1, value=f"Example: {sample_newer_date} Total Requests: 1,247, {sample_older_date}: 1,156, Change: +91 requests (↑7.9% increase)")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Status: GROWING (more requests), DECLINING (fewer requests), STABLE (similar request volume)")
+    index_sheet.cell(row=row, column=1, value="Status: GROWING (requests increased from older to newer date), DECLINING (decreased), STABLE (similar volume)")
     row += 2
     
     # 3. LLM Cost Metric
     index_sheet.cell(row=row, column=1, value='3. LLM Cost Metric').font = Font(bold=True)
     row += 1
-    index_sheet.cell(row=row, column=1, value="Definition: Measures the financial cost of using Large Language Models (LLMs) for processing requests.")
+    index_sheet.cell(row=row, column=1, value="Definition: Shows the comparison of Large Language Model (LLM) expenditure between two dates.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="This metric tracks expenditure on AI processing and helps monitor cost efficiency of LLM usage.")
+    index_sheet.cell(row=row, column=1, value="Tracks how AI processing costs have changed, helping identify cost efficiency trends.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Example: 03-10 Total Cost: $45.67, 02-10: $42.30, Change: +$3.37 (↑8.0% increase)")
+    index_sheet.cell(row=row, column=1, value=f"Example: {sample_newer_date} Total Cost: $45.67, {sample_older_date}: $42.30, Change: +$3.37 (↑8.0% increase)")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Status: EFFICIENT (cost per request decreased), EXPENSIVE (cost per request increased), STABLE (similar cost efficiency)")
+    index_sheet.cell(row=row, column=1, value="Status: EFFICIENT (cost per request decreased from older to newer date), EXPENSIVE (increased), STABLE (similar efficiency)")
     row += 2
     
     # 4. Reliability Metric
     index_sheet.cell(row=row, column=1, value='4. Reliability Metric').font = Font(bold=True)
     row += 1
-    index_sheet.cell(row=row, column=1, value="Definition: Measures the percentage of successful requests compared to the total number of requests.")
+    index_sheet.cell(row=row, column=1, value="Definition: Shows the comparison of successful request percentages between two dates.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="This metric indicates system stability and error rates. Higher percentages indicate fewer failures.")
+    index_sheet.cell(row=row, column=1, value="Illustrates how system stability and error rates have evolved between the compared dates.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Example: 03-10 Success Rate: 98.5%, 02-10: 96.8%, Change: +1.7% (↑1.8% improvement)")
+    index_sheet.cell(row=row, column=1, value=f"Example: {sample_newer_date} Success Rate: 98.5%, {sample_older_date}: 96.8%, Change: +1.7% (↑1.8% improvement)")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Status: IMPROVING (higher success rate), DEGRADING (lower success rate), STABLE (similar success rate)")
+    index_sheet.cell(row=row, column=1, value="Status: IMPROVING (success rate increased from older to newer date), DEGRADING (decreased), STABLE (similar rates)")
     row += 2
     
     # 5. User Activity Metric
     index_sheet.cell(row=row, column=1, value='5. User Activity Metric').font = Font(bold=True)
     row += 1
-    index_sheet.cell(row=row, column=1, value="Definition: Measures the number of unique users interacting with the system in a given time period.")
+    index_sheet.cell(row=row, column=1, value="Definition: Shows the comparison of unique user counts between two dates.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="This metric tracks user engagement and adoption. Higher numbers indicate broader usage of the system.")
+    index_sheet.cell(row=row, column=1, value="Demonstrates how the user base has changed, indicating shifts in adoption and engagement patterns.")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Example: 03-10 Unique Users: 892, 02-10: 847, Change: +45 users (↑5.3% growth)")
+    index_sheet.cell(row=row, column=1, value=f"Example: {sample_newer_date} Unique Users: 892, {sample_older_date}: 847, Change: +45 users (↑5.3% growth)")
     row += 1
-    index_sheet.cell(row=row, column=1, value="Status: GROWING (more unique users), DECLINING (fewer unique users), STABLE (similar user count)")
+    index_sheet.cell(row=row, column=1, value="Status: GROWING (user count increased from older to newer date), DECLINING (decreased), STABLE (similar count)")
     
     # Auto-adjust column width
     index_sheet.column_dimensions['A'].width = 50
