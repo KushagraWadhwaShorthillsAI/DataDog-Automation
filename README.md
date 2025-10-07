@@ -45,7 +45,7 @@ python scripts/simple_individual_analyzer.py --compare 24/09,25/09
 ```bash
 cd /Users/shtlpmac027/Documents/DataDog
 source venv/bin/activate
-python scripts/format_daily_analysis.py
+c
 ```
 
 **Output:** 

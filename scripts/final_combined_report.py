@@ -507,8 +507,8 @@ class FinalPolishedCombinedReport:
     def generate_excel_report(self, all_data: Dict) -> bool:
         """Generate a complete and correctly formatted Excel report."""
         try:
-            today = datetime.now().strftime('%Y%m%d_%H%M')
-            excel_path = f"{self.reports_dir}/analysis_report_{today}.xlsx"
+            current_month = datetime.now().strftime('%B')
+            excel_path = f"{self.reports_dir}/{current_month}_Complete.xlsx"
             with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
                 self._create_response_time_sheet(writer, all_data)
                 self._create_success_rate_sheet_restructured(writer, all_data)
@@ -638,7 +638,7 @@ class FinalPolishedCombinedReport:
                 for cell in row:
                     if cell.data_type == 'n':
                         cell.alignment = Alignment(horizontal='right')
-                        cell.number_format = '#,##0.0000'
+                        cell.number_format = '#,##0.00'
     
     def _create_error_categories_sheet(self, writer, all_data: Dict):
         """Creates a structured sheet for error categories, grouped by file."""
@@ -894,7 +894,7 @@ class FinalPolishedCombinedReport:
                 for r in range(header_row + 1, header_row + 1 + len(llm_df)):
                     v = ws.cell(row=r, column=2)
                     v.alignment = Alignment(horizontal='right')
-                    v.number_format = '#,##0.0000'
+                    v.number_format = '#,##0.00'
                 llm_last = header_row + len(llm_df)
                 current_row = llm_last + 2
 
@@ -978,7 +978,7 @@ class FinalPolishedCombinedReport:
                             cell = ws.cell(row=r, column=col)
                             if isinstance(cell.value, (int, float)):
                                 cell.alignment = Alignment(horizontal='right')
-                                cell.number_format = '#,##0.0000'
+                                cell.number_format = '#,##0.00'
                 if 'count' in headers:
                     col = headers['count']
                     for r in range(header_row + 1, last_row + 1):
@@ -1063,7 +1063,7 @@ class FinalPolishedCombinedReport:
                             cell = ws.cell(row=r, column=col)
                             if isinstance(cell.value, (int, float)):
                                 cell.alignment = Alignment(horizontal='right')
-                                cell.number_format = '#,##0.0000'
+                                cell.number_format = '#,##0.00'
                 for key in ['count','effective_mode']:
                     if key in headers:
                         col = headers[key]
@@ -1632,19 +1632,18 @@ class FinalPolishedCombinedReport:
         self._save_page_to_pdf(pdf, fig)
     
     def generate_reports(self) -> bool:
-        """Generate both Excel and PDF reports"""
+        """Generate Excel report only"""
         print("🚀 Generating final, polished combined reports (regex-only parsing)...")
         all_data = self.collect_data()
         if not all_data:
             print("❌ No data found!")
             return False
         excel_success = self.generate_excel_report(all_data)
-        pdf_success = self.generate_pdf_report(all_data)
-        if excel_success and pdf_success:
-            print("\n🎉 All reports generated successfully!")
+        if excel_success:
+            print("\n🎉 Report generated successfully!")
         else:
-            print("\n⚠️ Some reports failed to generate.")
-        return excel_success and pdf_success
+            print("\n⚠️ Report failed to generate.")
+        return excel_success
 
 def main():
     generator = FinalPolishedCombinedReport()

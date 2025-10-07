@@ -5,3 +5,4 @@ matplotlib
 plotly
 seaborn
 python-dotenv
+playwright

@@ -1198,27 +1198,27 @@ class SimpleIndividualAnalyzer:
     
     def _get_latency_status(self, pct_change: float) -> str:
         """Determine latency status based on percentage change"""
-        if pct_change < -5:
+        if pct_change < 0:
             return "IMPROVING"
-        elif pct_change > 5:
+        elif pct_change > 0:
             return "DEGRADING"
         else:
             return "STABLE"
     
     def _get_throughput_status(self, pct_change: float) -> str:
         """Determine throughput status based on percentage change"""
-        if pct_change > 5:
+        if pct_change > 0:
             return "GROWING"
-        elif pct_change < -5:
+        elif pct_change < 0:
             return "DECLINING"
         else:
             return "STABLE"
     
     def _get_cost_status(self, pct_change: float) -> str:
         """Determine cost status based on percentage change"""
-        if pct_change < -5:
+        if pct_change < 0:
             return "EFFICIENT"
-        elif pct_change > 10:
+        elif pct_change > 0:
             return "EXPENSIVE"
         else:
             return "STABLE"
@@ -1234,9 +1234,9 @@ class SimpleIndividualAnalyzer:
     
     def _get_user_activity_status(self, pct_change: float) -> str:
         """Determine user activity status based on percentage change"""
-        if pct_change > 5:
+        if pct_change > 0:
             return "GROWING"
-        elif pct_change < -5:
+        elif pct_change < 0:
             return "DECLINING"
         else:
             return "STABLE"
@@ -1254,8 +1254,8 @@ class SimpleIndividualAnalyzer:
         latency = metrics['latency']
         change_symbol = '→' if latency['change_absolute'] == 0 else ('↓' if latency['change_absolute'] < 0 else '↑')
         print(f"1. Latency Metric")
-        print(f"Today's Avg Response Time (ms): {latency['today']:.3f}")
-        print(f"Yesterday's Avg Response Time (ms): {latency['yesterday']:.3f}")
+        print(f"{today_date} Avg Response Time (ms): {latency['today']:.3f}")
+        print(f"{yesterday_date} Avg Response Time (ms): {latency['yesterday']:.3f}")
         arrow = change_symbol
         word = 'no change' if latency['change_absolute'] == 0 else ('improvement' if latency['change_absolute'] < 0 else 'increase')
         print(f"Change (ms): {latency['change_absolute']:+.3f} ({arrow}{abs(latency['change_percent']):.2f}% {word})")
@@ -1266,8 +1266,8 @@ class SimpleIndividualAnalyzer:
         throughput = metrics['throughput']
         change_symbol = "↓" if throughput['change_absolute'] < 0 else "↑"
         print(f"2. Throughput Metric")
-        print(f"Today's Total Requests: {throughput['today']:,}")
-        print(f"Yesterday's Total Requests: {throughput['yesterday']:,}")
+        print(f"{today_date} Total Requests: {throughput['today']:,}")
+        print(f"{yesterday_date} Total Requests: {throughput['yesterday']:,}")
         if throughput['change_absolute'] == 0:
             arrow = '→'; word = 'no change'
         else:
@@ -1281,8 +1281,8 @@ class SimpleIndividualAnalyzer:
         cost = metrics['llm_cost']
         change_symbol = '→' if cost['change_absolute'] == 0 else ('↓' if cost['change_absolute'] < 0 else '↑')
         print(f"3. LLM Cost Metric")
-        print(f"Today's Total Cost ($): {cost['today']:.4f}")
-        print(f"Yesterday's Total Cost ($): {cost['yesterday']:.4f}")
+        print(f"{today_date} Total Cost ($): {cost['today']:.4f}")
+        print(f"{yesterday_date} Total Cost ($): {cost['yesterday']:.4f}")
         arrow = change_symbol
         word = 'no change' if cost['change_absolute'] == 0 else ('decrease' if cost['change_absolute'] < 0 else 'increase')
         print(f"Change ($): {cost['change_absolute']:+.4f} ({arrow}{abs(cost['change_percent']):.2f}% {word})")
@@ -1293,8 +1293,8 @@ class SimpleIndividualAnalyzer:
         reliability = metrics['reliability']
         change_symbol = '→' if reliability['change_absolute'] == 0 else ('↓' if reliability['change_absolute'] < 0 else '↑')
         print(f"4. Reliability Metric")
-        print(f"Today's Success Rate (%): {reliability['today']:.2f}")
-        print(f"Yesterday's Success Rate (%): {reliability['yesterday']:.2f}")
+        print(f"{today_date} Success Rate (%): {reliability['today']:.2f}")
+        print(f"{yesterday_date} Success Rate (%): {reliability['yesterday']:.2f}")
         arrow = change_symbol
         word = 'no change' if reliability['change_absolute'] == 0 else ('improvement' if reliability['change_absolute'] > 0 else 'degradation')
         print(f"Change (%): {reliability['change_absolute']:+.2f} ({arrow}{abs(reliability['change_percent']):.2f}% {word})")
@@ -1305,8 +1305,8 @@ class SimpleIndividualAnalyzer:
         activity = metrics['user_activity']
         change_symbol = "↓" if activity['change_absolute'] < 0 else "↑"
         print(f"5. User Activity Metric")
-        print(f"Today's Unique Users: {activity['today']:,}")
-        print(f"Yesterday's Unique Users: {activity['yesterday']:,}")
+        print(f"{today_date} Unique Users: {activity['today']:,}")
+        print(f"{yesterday_date} Unique Users: {activity['yesterday']:,}")
         if activity['change_absolute'] == 0:
             arrow = '→'; word = 'no change'
         else:
@@ -1343,8 +1343,8 @@ class SimpleIndividualAnalyzer:
                 latency = metrics['latency']
                 change_symbol = '→' if latency['change_absolute'] == 0 else ('↓' if latency['change_absolute'] < 0 else '↑')
                 f.write(f"1. Latency Metric\n")
-                f.write(f"Today's Avg Response Time: {latency['today']:.3f}ms\n")
-                f.write(f"Yesterday's Avg Response Time: {latency['yesterday']:.3f}ms\n")
+                f.write(f"{today_date} Avg Response Time: {latency['today']:.3f}ms\n")
+                f.write(f"{yesterday_date} Avg Response Time: {latency['yesterday']:.3f}ms\n")
                 arrow = change_symbol
                 word = 'no change' if latency['change_absolute'] == 0 else ('improvement' if latency['change_absolute'] < 0 else 'increase')
                 f.write(f"Change: {latency['change_absolute']:+.3f}ms ({arrow}{abs(latency['change_percent']):.2f}% {word})\n")
@@ -1354,8 +1354,8 @@ class SimpleIndividualAnalyzer:
                 throughput = metrics['throughput']
                 change_symbol = "↓" if throughput['change_absolute'] < 0 else "↑"
                 f.write(f"2. Throughput Metric\n")
-                f.write(f"Today's Total Requests: {throughput['today']:,}\n")
-                f.write(f"Yesterday's Total Requests: {throughput['yesterday']:,}\n")
+                f.write(f"{today_date} Total Requests: {throughput['today']:,}\n")
+                f.write(f"{yesterday_date} Total Requests: {throughput['yesterday']:,}\n")
                 if throughput['change_absolute'] == 0:
                     arrow = '→'; word = 'no change'
                 else:
@@ -1368,8 +1368,8 @@ class SimpleIndividualAnalyzer:
                 cost = metrics['llm_cost']
                 change_symbol = "↓" if cost['change_absolute'] < 0 else "↑"
                 f.write(f"3. LLM Cost Metric\n")
-                f.write(f"Today's Total Cost ($): {cost['today']:.2f}\n")
-                f.write(f"Yesterday's Total Cost ($): {cost['yesterday']:.2f}\n")
+                f.write(f"{today_date} Total Cost ($): {cost['today']:.2f}\n")
+                f.write(f"{yesterday_date} Total Cost ($): {cost['yesterday']:.2f}\n")
                 if cost['change_absolute'] == 0:
                     arrow = '→'; word = 'no change'
                 else:
@@ -1382,8 +1382,8 @@ class SimpleIndividualAnalyzer:
                 reliability = metrics['reliability']
                 change_symbol = "↓" if reliability['change_absolute'] < 0 else "↑"
                 f.write(f"4. Reliability Metric\n")
-                f.write(f"Today's Success Rate: {reliability['today']:.1f}%\n")
-                f.write(f"Yesterday's Success Rate: {reliability['yesterday']:.1f}%\n")
+                f.write(f"{today_date} Success Rate: {reliability['today']:.1f}%\n")
+                f.write(f"{yesterday_date} Success Rate: {reliability['yesterday']:.1f}%\n")
                 if reliability['change_absolute'] == 0:
                     arrow = '→'; word = 'no change'
                 else:
@@ -1396,8 +1396,8 @@ class SimpleIndividualAnalyzer:
                 activity = metrics['user_activity']
                 change_symbol = "↓" if activity['change_absolute'] < 0 else "↑"
                 f.write(f"5. User Activity Metric\n")
-                f.write(f"Today's Unique Users: {activity['today']:,}\n")
-                f.write(f"Yesterday's Unique Users: {activity['yesterday']:,}\n")
+                f.write(f"{today_date} Unique Users: {activity['today']:,}\n")
+                f.write(f"{yesterday_date} Unique Users: {activity['yesterday']:,}\n")
                 if activity['change_absolute'] == 0:
                     arrow = '→'; word = 'no change'
                 else:

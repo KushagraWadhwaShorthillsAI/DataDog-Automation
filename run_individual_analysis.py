@@ -42,7 +42,7 @@ def print_usage():
     print("  ✓ Calculate response time & LLM cost metrics")
     print("  ✓ Show accurate error rates and breakdown")
     print("  ✓ Save individual analysis to TXT files")
-    print("  ✓ Generate combined Excel and PDF reports")
+    print("  ✓ Generate combined Excel report")
     print()
 
 
@@ -65,7 +65,7 @@ def main():
     print("  ✓ Calculate response time & LLM cost metrics")
     print("  ✓ Show accurate error rates and breakdown")
     print("  ✓ Save individual analysis to TXT files")
-    print("  ✓ Generate combined Excel and PDF reports")
+    print("  ✓ Generate combined Excel report")
     print()
     
     if len(sys.argv) == 1:
