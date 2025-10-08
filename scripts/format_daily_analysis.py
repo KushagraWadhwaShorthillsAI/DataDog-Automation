@@ -38,14 +38,20 @@ def parse_daily_analysis_file(file_path):
     full_date2 = None
     
     if comparison_match:
-        # Extract just day-month for display in DD-MM format
+        # Format as DD_MM_YYYY to avoid Excel misinterpreting dates
         full_date1 = comparison_match.group(1)  # Full date format: 2025-10-02
         full_date2 = comparison_match.group(2)  # Full date format: 2025-10-03
-        display_date1 = f"{full_date1[-2:]}-{full_date1[-5:-3]}"  # Extract DD-MM: 02-10
-        display_date2 = f"{full_date2[-2:]}-{full_date2[-5:-3]}"  # Extract DD-MM: 03-10
         
-        # Use these dates instead of the filename dates
-        date1, date2 = display_date1, display_date2
+        # Convert to DD_MM_YYYY format
+        day1, month1, year1 = full_date1[-2:], full_date1[5:7], full_date1[0:4]
+        day2, month2, year2 = full_date2[-2:], full_date2[5:7], full_date2[0:4]
+        
+        # Format as DD_MM_YYYY
+        date1 = f"{day1}_{month1}_{year1}"
+        date2 = f"{day2}_{month2}_{year2}"
+        
+        # Store original dates for sorting
+        orig_date1, orig_date2 = full_date1, full_date2
     
     # Parse metrics from content
     metrics = {}
@@ -250,14 +256,36 @@ def create_formatted_excel():
     index_sheet = wb.create_sheet(title="Link to other tabs")
     
     # Sort date_groups by date in ascending order
-    sorted_date_keys = sorted(date_groups.keys(), key=lambda x: (
-        # Parse the first date (date1) from format "DD-MM" to a sortable value
-        int(x.split('_vs_')[0].split('-')[1]),  # Month of date1
-        int(x.split('_vs_')[0].split('-')[0]),  # Day of date1
-        # Then by the second date (date2)
-        int(x.split('_vs_')[1].split('-')[1]),  # Month of date2
-        int(x.split('_vs_')[1].split('-')[0])   # Day of date2
-    ))
+    from datetime import datetime
+    
+    def parse_date_key(date_key):
+        try:
+            # Parse DD_MM_YYYY format
+            date1_parts = date_key.split('_vs_')[0].split('_')
+            date2_parts = date_key.split('_vs_')[1].split('_')
+            
+            if len(date1_parts) == 3:
+                # Format is DD_MM_YYYY
+                day1 = int(date1_parts[0])
+                month1 = int(date1_parts[1])
+                year1 = int(date1_parts[2])
+                
+                day2 = int(date2_parts[0])
+                month2 = int(date2_parts[1])
+                year2 = int(date2_parts[2])
+                
+                # Return the second date (newer date) for primary sorting
+                # This ensures newest dates appear to the right
+                return (datetime(year2, month2, day2), datetime(year1, month1, day1))
+            else:
+                # Fallback for other formats
+                return (datetime(1900, 1, 1), datetime(1900, 1, 1))
+        except (ValueError, IndexError):
+            # Return a default value for invalid formats
+            return (datetime(1900, 1, 1), datetime(1900, 1, 1))
+    
+    # Sort by the second date (newer date) in ascending order
+    sorted_date_keys = sorted(date_groups.keys(), key=parse_date_key)
     
     # Define styles
     bold_font = Font(bold=True, size=12)
@@ -277,14 +305,28 @@ def create_formatted_excel():
         print(f"Processing date comparison: {date_key}")
         
         # Create new worksheet with a cleaner sheet name format
-        sheet_name = f"Daily_Analysis_{date_key.replace('-', '_').replace('_vs_', '_vs_')}"
+        # Extract the date parts for sheet naming
+        date1_parts = date_key.split('_vs_')[0].split('_')
+        date2_parts = date_key.split('_vs_')[1].split('_')
+        
+        # Format as DD_MM for sheet name (shorter for Excel compatibility)
+        if len(date1_parts) == 3 and len(date2_parts) == 3:  # DD_MM_YYYY format
+            sheet_date1 = f"{date1_parts[0]}_{date1_parts[1]}"
+            sheet_date2 = f"{date2_parts[0]}_{date2_parts[1]}"
+        else:  # Fallback
+            sheet_date1 = date_key.split('_vs_')[0]
+            sheet_date2 = date_key.split('_vs_')[1]
+            
+        sheet_name = f"Daily_Analysis_{sheet_date1}_vs_{sheet_date2}"
         ws = wb.create_sheet(title=sheet_name)
         
         # Headers - Use the actual dates from the first service in this group
         # Get the dates from the first service in this comparison group
         first_service_date1 = services_data[0]['date1'] if services_data else date_key.split('_vs_')[0]
         first_service_date2 = services_data[0]['date2'] if services_data else date_key.split('_vs_')[1]
-        headers = ['Service', f'{first_service_date1}', f'{first_service_date2}', 'Change', 'Status']
+        
+        # Format dates as text with quotes to prevent Excel from auto-formatting
+        headers = ['Service', f'"{first_service_date1}"', f'"{first_service_date2}"', 'Change', 'Status']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.font = header_font
@@ -386,6 +428,7 @@ def create_formatted_excel():
 
 def create_index_sheet(wb, index_sheet):
     """Create an index sheet with hyperlinks to date comparison sheets and metric definitions"""
+    from datetime import datetime
     # Title styling
     title_cell = index_sheet.cell(row=1, column=1, value='Daily Analysis Report')
     title_cell.font = Font(bold=True, size=16, color='2F4F4F')
@@ -402,27 +445,34 @@ def create_index_sheet(wb, index_sheet):
     # Extract date parts from the sheet name format "Daily_Analysis_DD_MM_vs_DD_MM"
     def extract_date_parts(sheet_name):
         if not sheet_name.startswith("Daily_Analysis_"):
-            return (0, 0, 0, 0)  # Default for non-matching sheets
+            return (datetime(1900, 1, 1), datetime(1900, 1, 1))  # Default for non-matching sheets
         
         parts = sheet_name.replace("Daily_Analysis_", "").split("_vs_")
         if len(parts) != 2:
-            return (0, 0, 0, 0)
-            
-        date1_parts = parts[0].split("_")
-        date2_parts = parts[1].split("_")
+            return (datetime(1900, 1, 1), datetime(1900, 1, 1))
         
-        if len(date1_parts) != 2 or len(date2_parts) != 2:
-            return (0, 0, 0, 0)
-            
         try:
-            # Format is DD_MM_vs_DD_MM
-            day1 = int(date1_parts[0])
-            month1 = int(date1_parts[1])
-            day2 = int(date2_parts[0])
-            month2 = int(date2_parts[1])
-            return (month1, day1, month2, day2)
+            # Try to parse DD_MM format
+            date1_parts = parts[0].split("_")
+            date2_parts = parts[1].split("_")
+            
+            if len(date1_parts) >= 2 and len(date2_parts) >= 2:
+                # Format is DD_MM_vs_DD_MM or DD_MM_YYYY_vs_DD_MM_YYYY
+                day1 = int(date1_parts[0])
+                month1 = int(date1_parts[1])
+                year1 = int(date1_parts[2]) if len(date1_parts) >= 3 else datetime.now().year
+                
+                day2 = int(date2_parts[0])
+                month2 = int(date2_parts[1])
+                year2 = int(date2_parts[2]) if len(date2_parts) >= 3 else datetime.now().year
+                
+                # Return the second date (newer date) for primary sorting
+                # This ensures newest dates appear to the right
+                return (datetime(year2, month2, day2), datetime(year1, month1, day1))
+            
+            return (datetime(1900, 1, 1), datetime(1900, 1, 1))
         except (ValueError, IndexError):
-            return (0, 0, 0, 0)
+            return (datetime(1900, 1, 1), datetime(1900, 1, 1))
     
     # Sort sheets by date in chronological order
     sorted_sheet_names = sorted(sheet_names, key=extract_date_parts)
@@ -440,8 +490,8 @@ def create_index_sheet(wb, index_sheet):
     row += 2
     
     # Get sample dates from the first sheet name for the examples
-    sample_newer_date = "06-10"  # Default
-    sample_older_date = "03-10"  # Default
+    sample_newer_date = "06_10_2025"  # Default in DD_MM_YYYY format
+    sample_older_date = "03_10_2025"  # Default in DD_MM_YYYY format
     
     # Try to extract dates from the first sheet name if available
     if sorted_sheet_names:
@@ -450,11 +500,13 @@ def create_index_sheet(wb, index_sheet):
             parts = first_sheet.replace("Daily_Analysis_", "").split("_vs_")
             if len(parts) == 2:
                 try:
-                    older_parts = parts[0].split("_")
-                    newer_parts = parts[1].split("_")
-                    if len(older_parts) == 2 and len(newer_parts) == 2:
-                        sample_older_date = f"{older_parts[0]}-{older_parts[1]}"
-                        sample_newer_date = f"{newer_parts[0]}-{newer_parts[1]}"
+                    date1_parts = parts[0].split("_")
+                    date2_parts = parts[1].split("_")
+                    
+                    if len(date1_parts) == 2 and len(date2_parts) == 2:
+                        # Format is DD_MM
+                        sample_older_date = f"{date1_parts[0]}_{date1_parts[1]}_2025"  # Add year
+                        sample_newer_date = f"{date2_parts[0]}_{date2_parts[1]}_2025"  # Add year
                 except:
                     pass  # Use defaults if any error occurs
     

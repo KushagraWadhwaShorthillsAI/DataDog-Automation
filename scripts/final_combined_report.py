@@ -334,7 +334,7 @@ class FinalPolishedCombinedReport:
                                 'error': int(cols[2]),
                                 'info': int(cols[3]),
                                 'total': int(cols[4]),
-                                'failure_pct': float(cols[5].replace('%',''))
+                                'failure_pct': float(cols[5].replace('%','')) / 100.0  # Divide by 100 to convert percentage to decimal
                             })
                         except (ValueError, IndexError) as e:
                             print(f"⚠️ Error parsing mode failure row: {e}")
@@ -386,7 +386,7 @@ class FinalPolishedCombinedReport:
                         'error': int(cols[1]),
                         'info': int(cols[2]),
                         'total': int(cols[3]),
-                        'failure_pct': float(cols[4].replace('%',''))
+                        'failure_pct': float(cols[4].replace('%','')) / 100.0  # Divide by 100 to convert percentage to decimal
                     })
             metrics['fail_by_process'] = rows
         if cost_proc_lines:
@@ -456,7 +456,7 @@ class FinalPolishedCombinedReport:
                         'error': int(cols[2]),
                         'info': int(cols[3]),
                         'total': int(cols[4]),
-                        'failure_pct': float(cols[5].replace('%',''))
+                        'failure_pct': float(cols[5].replace('%','')) / 100.0  # Divide by 100 to convert percentage to decimal
                     })
             metrics['fail_by_process_mode'] = rows
         return metrics

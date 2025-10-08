@@ -170,7 +170,7 @@ class SimpleIndividualAnalyzer:
         # Detection patterns
         detection_patterns = {
             'date': ['date', 'timestamp', '@timestamp', 'time', 'datetime'],
-            'status': ['status', '@status', 'response_status', 'result'],
+            'status': ['status', '@status', 'response_status', 'result', 'status_code'],
             'response_time': ['responsetime', 'response_time', 'totaltimetaken', 'total_time_taken', 
                             'duration', 'elapsed', 'time_taken', 'timetaken'],
             'uuid': ['useruuid', 'user_uuid', 'uuid', 'userid', 'user_id', 'clientid', 'client_id'],
@@ -179,7 +179,7 @@ class SimpleIndividualAnalyzer:
             'message': ['message', 'requestpayload.message', 'requestpayloadmessage', 'error_message', '@message'],
             # Additional columns
             'service': ['service', 'service_name', '@service', 'servicename', 'source', 'source_name', '@source', 'sourcename'],
-            'process_name': ['processname', 'process_name'],
+            'process_name': ['processname', 'process_name', '@processname'],
             'request_payload_mode': ['requestpayloadmode', 'request_payload_mode', 'requestpayload.mode', 'resquestpayloadmode'],
             'redirected_mode': ['redirectedmode', 'redirect_mode', 'redirectionmode']
         }
@@ -187,8 +187,12 @@ class SimpleIndividualAnalyzer:
         for mapping_key, patterns in detection_patterns.items():
             for pattern in patterns:
                 for i, col in enumerate(columns_lower):
-                    if pattern in col.replace(' ', '').replace('_', '').replace('.', ''):
+                    # Make pattern lowercase for case-insensitive comparison
+                    pattern_lower = pattern.lower()
+                    # Remove common separators from both pattern and column name
+                    if pattern_lower in col.replace(' ', '').replace('_', '').replace('.', '').replace('@', ''):
                         self.column_mappings[mapping_key] = columns[i]
+                        print(f"✓ Mapped '{mapping_key}' to column '{columns[i]}'")
                         break
                 if self.column_mappings[mapping_key]:
                     break
@@ -471,13 +475,32 @@ class SimpleIndividualAnalyzer:
                 status_col = self.column_mappings.get('status')
                 if status_col and status_col in self.df.columns and process_col in self.df.columns:
                     df_proc_status = self.df[[process_col, status_col]].copy()
+                    # Ensure status values are properly normalized
                     df_proc_status[status_col] = df_proc_status[status_col].astype(str).str.strip().str.lower()
+                    
+                    # Check for NaN values in process name for error records
+                    error_rows = df_proc_status[df_proc_status[status_col] == 'error']
+                    if error_rows[process_col].isna().any():
+                        print(f"⚠️ Found {error_rows[process_col].isna().sum()} error records with missing process name")
+                        # Fill NaN process names with a default value for error records
+                        df_proc_status.loc[(df_proc_status[status_col] == 'error') & (df_proc_status[process_col].isna()), process_col] = 'unknown process'
+                        print(f"✓ Fixed by assigning 'unknown process' to errors with missing process name")
                     pvt = df_proc_status.pivot_table(index=process_col, columns=status_col, aggfunc='size', fill_value=0)
                     if 'error' not in pvt.columns: pvt['error'] = 0
                     if 'info' not in pvt.columns: pvt['info'] = 0
                     pvt = pvt[['error','info']].reset_index()
                     pvt['total'] = pvt['error'] + pvt['info']
-                    pvt['failure_pct'] = (pvt['error'] / pvt['total'] * 100).fillna(0)
+                    
+                    # Calculate failure percentage correctly and ensure it's never more than 100%
+                    pvt['failure_pct'] = pvt.apply(
+                        lambda row: min(100.0, (row['error'] / row['total'] * 100) if row['total'] > 0 else 0),
+                        axis=1
+                    )
+                    
+                    # Debug - print the pivot table to verify values
+                    print(f"Debug - Pivot table with failure percentages:")
+                    print(pvt)
+                    
                     metrics['failure_by_process'] = pvt.to_dict(orient='records')
                     print(f"✓ Computed failure rates by process (from preprocessed data): {len(pvt)} rows")
                     print(f"  Total errors found: {pvt['error'].sum()}")
@@ -1631,11 +1654,13 @@ class SimpleIndividualAnalyzer:
                         err = int(row.get('error', 0))
                         info = int(row.get('info', 0))
                         total = err + info
-                        failure_pct = row.get('failure_pct', 0.0)
+                        # Use the pre-calculated failure_pct from the DataFrame, capped at 100%
+                        failure_pct = min(row.get('failure_pct', 0.0), 100.0)
                         overall_err += err; overall_info += info
                         f.write(f"{mode:<6} {name:<24} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
                     overall_total = overall_err + overall_info
-                    overall_pct = (overall_err / overall_total * 100) if overall_total else 0
+                    # Cap overall percentage at 100%
+                    overall_pct = min((overall_err / overall_total * 100) if overall_total else 0, 100.0)
                     f.write(f"{'—':<6} {'Overall':<24} {overall_err:>8} {overall_info:>16} {overall_total:>8} {overall_pct:>9.2f}\n\n")
 
                 # Process-wise failure table
@@ -1645,9 +1670,25 @@ class SimpleIndividualAnalyzer:
                     f.write(f"{'Process Name':<40} {'Error':>8} {'Success (Info)':>16} {'Total':>8} {'Failure %':>10}\n")
                     f.write(f"{'-'*95}\n")
                     for row in metrics['failure_by_process']:
-                        err = int(row.get('error', 0)); info = int(row.get('info', 0)); total = err + info
-                        failure_pct = (err / total * 100) if total else 0
-                        f.write(f"{str(row.get(self.column_mappings.get('process_name'), row.get('process_name',''))):<40} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
+                        err = int(row.get('error', 0))
+                        info = int(row.get('info', 0))
+                        total = err + info
+                        
+                        # Get the process name
+                        process_name = str(row.get(self.column_mappings.get('process_name'), row.get('process_name','')))
+                        
+                        # Get the pre-calculated failure_pct directly from the row
+                        # If it's not available, calculate it safely
+                        if 'failure_pct' in row:
+                            failure_pct = float(row['failure_pct'])
+                        else:
+                            failure_pct = (err / total * 100) if total > 0 else 0.0
+                            
+                        # Ensure it's never more than 100%
+                        failure_pct = min(100.0, failure_pct)
+                        
+                        # Write the line with proper formatting
+                        f.write(f"{process_name:<40} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
                     f.write("\n")
 
                 # Process x Mode combined tables (if present)
@@ -1680,7 +1721,8 @@ class SimpleIndividualAnalyzer:
                     f.write(f"{'-'*135}\n")
                     for row in metrics['failure_by_process_mode']:
                         err = int(row.get('error', 0)); info = int(row.get('info', 0)); total = err + info
-                        failure_pct = (err / total * 100) if total else 0
+                        # Use the pre-calculated failure_pct from the DataFrame, capped at 100%
+                        failure_pct = min(row.get('failure_pct', 0.0), 100.0)
                         f.write(f"{str(row.get(self.column_mappings.get('process_name'), '')):<40} {int(row.get('effective_mode', -1)):>6} {err:>8} {info:>16} {total:>8} {failure_pct:>9.2f}\n")
                     f.write("\n")
                     f.write(f"LLM COST BY EFFECTIVE MODE\n")
