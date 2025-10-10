@@ -1248,9 +1248,10 @@ class SimpleIndividualAnalyzer:
     
     def _get_reliability_status(self, absolute_change: float) -> str:
         """Determine reliability status based on absolute change"""
-        if absolute_change > 1:
+        # Use a much smaller threshold to detect even tiny changes
+        if absolute_change > 0.0001:  # Detect even 0.0001% improvement
             return "IMPROVING"
-        elif absolute_change < -1:
+        elif absolute_change < -0.0001:  # Detect even 0.0001% degradation
             return "DEGRADING"
         else:
             return "STABLE"
@@ -1316,11 +1317,11 @@ class SimpleIndividualAnalyzer:
         reliability = metrics['reliability']
         change_symbol = '→' if reliability['change_absolute'] == 0 else ('↓' if reliability['change_absolute'] < 0 else '↑')
         print(f"4. Reliability Metric")
-        print(f"{today_date} Success Rate (%): {reliability['today']:.2f}")
-        print(f"{yesterday_date} Success Rate (%): {reliability['yesterday']:.2f}")
+        print(f"{today_date} Success Rate (%): {reliability['today']:.4f}")
+        print(f"{yesterday_date} Success Rate (%): {reliability['yesterday']:.4f}")
         arrow = change_symbol
         word = 'no change' if reliability['change_absolute'] == 0 else ('improvement' if reliability['change_absolute'] > 0 else 'degradation')
-        print(f"Change (%): {reliability['change_absolute']:+.2f} ({arrow}{abs(reliability['change_percent']):.2f}% {word})")
+        print(f"Change (%): {reliability['change_absolute']:+.4f} ({arrow}{abs(reliability['change_percent']):.4f}% {word})")
         print(f"Status: {reliability['status']}")
         print()
         
@@ -1489,11 +1490,11 @@ class SimpleIndividualAnalyzer:
                     reliability = metrics['reliability']
                     change_symbol = '→' if reliability['change_absolute'] == 0 else ('↓' if reliability['change_absolute'] < 0 else '↑')
                     f.write(f"4. Reliability Metric\n")
-                    f.write(f"Today's Success Rate: {reliability['today']:.2f}%\n")
-                    f.write(f"Yesterday's Success Rate: {reliability['yesterday']:.2f}%\n")
+                    f.write(f"Today's Success Rate: {reliability['today']:.4f}%\n")
+                    f.write(f"Yesterday's Success Rate: {reliability['yesterday']:.4f}%\n")
                     arrow = change_symbol
                     word = 'no change' if reliability['change_absolute'] == 0 else ('improvement' if reliability['change_absolute'] > 0 else 'degradation')
-                    f.write(f"Change: {reliability['change_absolute']:+.2f}% ({arrow}{abs(reliability['change_percent']):.2f}% {word})\n")
+                    f.write(f"Change: {reliability['change_absolute']:+.4f}% ({arrow}{abs(reliability['change_percent']):.4f}% {word})\n")
                     f.write(f"Status: {reliability['status']}\n\n")
                     
                     # 5. User Activity Metric
